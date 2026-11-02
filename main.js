@@ -50,6 +50,67 @@
     return res.json();
   }
 
+  // --- Notification & Toast Safe Helper ---
+  function showToast(msg, type = 'info') {
+    try {
+      if (window.ConfigStudio && typeof window.ConfigStudio.showToast === 'function') {
+        window.ConfigStudio.showToast(msg, type);
+      } else if (window.ConfigStudio && typeof window.ConfigStudio.showNotification === 'function') {
+        window.ConfigStudio.showNotification(msg, type);
+      } else if (window.ConfigStudio && window.ConfigStudio.ui && typeof window.ConfigStudio.ui.toast === 'function') {
+        window.ConfigStudio.ui.toast(msg, type);
+      } else {
+        console.log(`[Toast ${type}]`, msg);
+      }
+    } catch (e) {
+      console.warn('[Toast fallback]', msg, e);
+    }
+  }
+
+  // --- Ensure SSH Host is registered for SFTP & Terminal ---
+  function syncSSHHost(server) {
+    if (!server.connection || !server.connection.ssh) return null;
+    const sshCfg = server.connection.ssh;
+    const hostObj = {
+      id: 'host-' + server.id,
+      name: server.name,
+      host: sshCfg.host,
+      port: sshCfg.port || 22,
+      user: sshCfg.user || 'root',
+      identityId: sshCfg.identity || '',
+      createdAt: new Date().toISOString()
+    };
+
+    if (window.ConfigStudio && window.ConfigStudio.ssh && typeof window.ConfigStudio.ssh.save === 'function') {
+      try {
+        window.ConfigStudio.ssh.save(hostObj);
+        window.ConfigStudio.ssh.setLastActiveHostId(hostObj.id);
+      } catch (e) {
+        console.warn('[syncSSHHost error]', e);
+      }
+    } else {
+      const hostKey = 'cs_ssh_hosts_v1';
+      let hosts = [];
+      try {
+        hosts = JSON.parse(localStorage.getItem(hostKey) || '[]');
+      } catch (e) {}
+
+      const idx = hosts.findIndex(h => h.id === hostObj.id || (h.host === sshCfg.host && h.user === (sshCfg.user || 'root')));
+      if (idx >= 0) {
+        hosts[idx] = Object.assign(hosts[idx], hostObj);
+      } else {
+        hosts.push(hostObj);
+      }
+
+      try {
+        localStorage.setItem(hostKey, JSON.stringify(hosts));
+        localStorage.setItem('cs_ssh_last_host_id', hostObj.id);
+      } catch (e) {}
+    }
+
+    return hostObj;
+  }
+
   async function loadServers() {
     try {
       const data = await apiFetch('/api/servers');
@@ -97,8 +158,14 @@
     localStorage.setItem('cs_active_server_id', server.id);
 
     if (server.id === 'localhost') {
-      window.ConfigStudio.setRemoteEndpoint(null);
-      window.ConfigStudio.showToast('Переключено на локальный инстанс', 'info');
+      window.dispatchEvent(new CustomEvent('cs:switch-sidebar-tab', { detail: 'workspaces' }));
+      if (typeof window.ConfigStudio.setRemoteEndpoint === 'function') {
+        window.ConfigStudio.setRemoteEndpoint(null);
+      }
+      if (typeof window.ConfigStudio.refreshFiles === 'function') {
+        try { await window.ConfigStudio.refreshFiles(); } catch (e) {}
+      }
+      showToast('Переключено на локальный инстанс', 'info');
       refreshUI();
       return;
     }
@@ -111,7 +178,7 @@
     } else if (protocolMode === 'sftp' || (protocolMode === 'auto' && hasSSH)) {
       await openSFTP(server);
     } else {
-      window.ConfigStudio.showToast(`Узел ${server.name} выбран`, 'info');
+      showToast(`Узел ${server.name} выбран`, 'info');
     }
     refreshUI();
   }
@@ -126,53 +193,71 @@
       const remoteAgentSvc = await window.ConfigStudio.services.getOptional('remote-agent', pluginId);
       if (remoteAgentSvc && typeof remoteAgentSvc.connectServer === 'function') {
         await remoteAgentSvc.connectServer(server.id);
-        window.ConfigStudio.showToast(`Подключено через Агент к ${server.name}`, 'success');
+        showToast(`Подключено через Агент к ${server.name}`, 'success');
+        if (typeof window.ConfigStudio.refreshFiles === 'function') {
+          try { await window.ConfigStudio.refreshFiles(); } catch (e) {}
+        }
         return;
       }
     } catch (e) {
       // Graceful fallback
     }
 
+    // Resolve vault secret if needed
+    let token = agentCfg.vaultSecret || '';
+    if (token && window.ConfigStudio.secrets && typeof window.ConfigStudio.secrets.get === 'function') {
+      try {
+        const sec = await window.ConfigStudio.secrets.get(token);
+        if (sec && sec.value) token = sec.value;
+      } catch (e) {}
+    }
+
+    // Switch sidebar tab back to workspaces tree so agent files are visible
+    window.dispatchEvent(new CustomEvent('cs:switch-sidebar-tab', { detail: 'workspaces' }));
+
     // Direct endpoint connection
-    window.ConfigStudio.setRemoteEndpoint(url, agentCfg.vaultSecret || '');
-    window.ConfigStudio.showToast(`Подключено к Агенту: ${server.name}`, 'success');
+    if (typeof window.ConfigStudio.setRemoteEndpoint === 'function') {
+      window.ConfigStudio.setRemoteEndpoint(url, token);
+    }
+    if (typeof window.ConfigStudio.refreshFiles === 'function') {
+      try { await window.ConfigStudio.refreshFiles(); } catch (e) {}
+    }
+    showToast(`Подключено к Агенту: ${server.name}`, 'success');
   }
 
   async function openSFTP(server) {
     if (!server.connection || !server.connection.ssh) return;
     const sshCfg = server.connection.ssh;
-    window.ConfigStudio.showToast(`Открытие SFTP на ${sshCfg.host || server.name}...`, 'info');
+    const hostObj = syncSSHHost(server);
 
-    // Dispatch event or notify listeners for SFTP mount
-    const evt = new CustomEvent('cs:open-sftp-host', {
-      detail: {
-        host: sshCfg.host,
-        port: sshCfg.port || 22,
-        user: sshCfg.user || 'root',
-        identity: sshCfg.identity
-      }
-    });
-    window.dispatchEvent(evt);
+    // Reset remote endpoint so workspace/local/sftp is active
+    if (typeof window.ConfigStudio.setRemoteEndpoint === 'function') {
+      window.ConfigStudio.setRemoteEndpoint(null);
+    }
+
+    // Switch sidebar tab to SFTP
+    window.dispatchEvent(new CustomEvent('cs:switch-sidebar-tab', { detail: 'sftp' }));
+    window.dispatchEvent(new CustomEvent('cs:open-sftp-host', { detail: hostObj || sshCfg }));
+    if (typeof window.ConfigStudio.openSftp === 'function') {
+      window.ConfigStudio.openSftp(hostObj || sshCfg);
+    }
+    showToast(`Открыт SFTP проводник: ${server.name}`, 'info');
   }
 
   async function launchShell(server) {
     if (!server.connection || !server.connection.ssh) {
-      window.ConfigStudio.showToast(`SSH не настроен для ${server.name}`, 'error');
+      showToast(`SSH не настроен для ${server.name}`, 'error');
       return;
     }
     const sshCfg = server.connection.ssh;
-    window.ConfigStudio.showToast(`Запуск SSH шелла к ${server.name}...`, 'info');
+    const hostObj = syncSSHHost(server);
 
-    // Notify Core bottom dock terminal
-    const evt = new CustomEvent('cs:open-ssh-terminal', {
-      detail: {
-        host: sshCfg.host,
-        port: sshCfg.port || 22,
-        user: sshCfg.user || 'root',
-        identity: sshCfg.identity
-      }
-    });
-    window.dispatchEvent(evt);
+    // Open bottom dock terminal
+    window.dispatchEvent(new CustomEvent('cs:open-ssh-terminal', { detail: hostObj || sshCfg }));
+    if (typeof window.ConfigStudio.openTerminal === 'function') {
+      window.ConfigStudio.openTerminal(hostObj || sshCfg);
+    }
+    showToast(`Запуск SSH шелла к ${server.name}...`, 'info');
   }
 
   // --- Universal Header Switcher Component ---
@@ -813,7 +898,16 @@
     modal.querySelector('#cs-fleet-save-btn').addEventListener('click', async () => {
       saveFormValuesToState();
       if (!srv.id) {
-        window.ConfigStudio.showToast('Укажите ID узла', 'error');
+        showToast('Укажите ID узла на первой вкладке (1. Основные)', 'error');
+        activeTab = 'general';
+        renderTab();
+        setTimeout(() => {
+          const inp = modal.querySelector('#srv-id');
+          if (inp) {
+            inp.focus();
+            inp.style.borderColor = '#ef4444';
+          }
+        }, 50);
         return;
       }
       if (!srv.name) srv.name = srv.id;
@@ -823,11 +917,11 @@
           method: 'POST',
           body: JSON.stringify(srv)
         });
-        window.ConfigStudio.showToast(`Узел ${srv.name} сохранен`, 'success');
+        showToast(`Узел ${srv.name} сохранен`, 'success');
         closeModal();
         await loadServers();
       } catch (err) {
-        window.ConfigStudio.showToast(`Ошибка сохранения: ${err.message}`, 'error');
+        showToast(`Ошибка сохранения: ${err.message}`, 'error');
       }
     });
 
@@ -838,14 +932,14 @@
         if (!confirm(`Вы действительно хотите удалить узел "${srv.name}" из servers.yaml?`)) return;
         try {
           await apiFetch(`/api/servers/${encodeURIComponent(srv.id)}`, { method: 'DELETE' });
-          window.ConfigStudio.showToast(`Узел ${srv.name} удален`, 'info');
+          showToast(`Узел ${srv.name} удален`, 'info');
           if (activeServerId === srv.id) {
             selectServer({ id: 'localhost' });
           }
           closeModal();
           await loadServers();
         } catch (err) {
-          window.ConfigStudio.showToast(`Ошибка удаления: ${err.message}`, 'error');
+          showToast(`Ошибка удаления: ${err.message}`, 'error');
         }
       });
     }
@@ -903,11 +997,11 @@
           method: 'PUT',
           body: JSON.stringify({ content: newYaml })
         });
-        window.ConfigStudio.showToast('Файл servers.yaml обновлен', 'success');
+        showToast('Файл servers.yaml обновлен', 'success');
         closeModal();
         await loadServers();
       } catch (err) {
-        window.ConfigStudio.showToast(`Ошибка в YAML: ${err.message}`, 'error');
+        showToast(`Ошибка в YAML: ${err.message}`, 'error');
       }
     });
 
@@ -1016,7 +1110,7 @@
         if (res.success) {
           termEl.innerHTML += `<div style="color:#34d399;font-weight:700;margin-top:6px;">🎉 Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. Узел переведен в гибридный режим!</div>`;
           runBtn.innerHTML = `<span>✓ Готово</span>`;
-          window.ConfigStudio.showToast(`Агент успешно установлен на ${srv.name}!`, 'success');
+          showToast(`Агент успешно установлен на ${srv.name}!`, 'success');
           await loadServers();
           setTimeout(closeModal, 1800);
         } else {
@@ -1026,7 +1120,7 @@
         termEl.innerHTML += `<div style="color:#f87171;font-weight:700;margin-top:6px;">❌ Ошибка: ${escapeHtml(err.message)}</div>`;
         runBtn.disabled = false;
         runBtn.innerHTML = `<span>Повторить</span>`;
-        window.ConfigStudio.showToast(`Ошибка: ${err.message}`, 'error');
+        showToast(`Ошибка: ${err.message}`, 'error');
       }
     });
 
