@@ -1,7 +1,7 @@
 {
   "id": "servers",
   "name": "Servers & Fleet Manager",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP и интеграция с агентами в едином универсальном переключателе",
   "author": "Config Studio Team",
   "icon": "server",

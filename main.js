@@ -188,36 +188,12 @@
     const agentCfg = server.connection.agent;
     const url = agentCfg.url;
 
-    // Check optional remote-agent service for TOTP
-    try {
-      const remoteAgentSvc = await window.ConfigStudio.services.getOptional('remote-agent', pluginId);
-      if (remoteAgentSvc && typeof remoteAgentSvc.connectServer === 'function') {
-        await remoteAgentSvc.connectServer(server.id);
-        showToast(`Подключено через Агент к ${server.name}`, 'success');
-        if (typeof window.ConfigStudio.refreshFiles === 'function') {
-          try { await window.ConfigStudio.refreshFiles(); } catch (e) {}
-        }
-        return;
-      }
-    } catch (e) {
-      // Graceful fallback
-    }
-
-    // Resolve vault secret if needed
-    let token = agentCfg.vaultSecret || '';
-    if (token && window.ConfigStudio.secrets && typeof window.ConfigStudio.secrets.get === 'function') {
-      try {
-        const sec = await window.ConfigStudio.secrets.get(token);
-        if (sec && sec.value) token = sec.value;
-      } catch (e) {}
-    }
-
     // Switch sidebar tab back to workspaces tree so agent files are visible
     window.dispatchEvent(new CustomEvent('cs:switch-sidebar-tab', { detail: 'workspaces' }));
 
     // Direct endpoint connection
     if (typeof window.ConfigStudio.setRemoteEndpoint === 'function') {
-      window.ConfigStudio.setRemoteEndpoint(url, token);
+      window.ConfigStudio.setRemoteEndpoint(url, agentCfg.vaultSecret || '');
     }
     if (typeof window.ConfigStudio.refreshFiles === 'function') {
       try { await window.ConfigStudio.refreshFiles(); } catch (e) {}

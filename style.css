@@ -715,3 +715,8 @@
   color: #ffffff;
 }
 
+/* Hide legacy redundant remote-agent switcher in header when Universal Fleet is active */
+#cs-header-item-remote-agent-switcher {
+  display: none !important;
+}
+
