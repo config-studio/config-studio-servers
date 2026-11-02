@@ -724,7 +724,10 @@
               <label class="cs-fleet-form-label">Ключ из Core Vault</label>
               <select class="cs-fleet-form-select" id="srv-ssh-identity">
                 <option value="">(Авто / Агент ОС / Без ключа)</option>
-                ${vaultSecrets.map(v => `<option value="${escapeHtml(v.id)}" ${ssh.identity === v.id ? 'selected' : ''}>${escapeHtml(v.id)} (${v.type})</option>`).join('')}
+                ${vaultSecrets.map(v => {
+                  const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
+                  return `<option value="${escapeHtml(v.id)}" ${ssh.identity === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+                }).join('')}
               </select>
             </div>
           </div>
@@ -766,7 +769,10 @@
             <label class="cs-fleet-form-label">Секрет TOTP / Master Key из Core Vault</label>
             <select class="cs-fleet-form-select" id="srv-agent-secret">
               <option value="">(Без Vault секрета / публичный)</option>
-              ${vaultSecrets.map(v => `<option value="${escapeHtml(v.id)}" ${agent.vaultSecret === v.id ? 'selected' : ''}>${escapeHtml(v.id)} (${v.type})</option>`).join('')}
+              ${vaultSecrets.map(v => {
+                const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
+                return `<option value="${escapeHtml(v.id)}" ${agent.vaultSecret === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+              }).join('')}
             </select>
           </div>
           <div class="cs-fleet-form-help">Агент обеспечивает быстрое чтение и запись файлов по HTTP REST API с двухфакторной TOTP верификацией.</div>
