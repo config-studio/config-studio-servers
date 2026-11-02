@@ -667,3 +667,51 @@
   flex-direction: column;
   gap: 8px;
 }
+
+/* --- 1-Click Agent Install Dialog & Terminal Log --- */
+.cs-fleet-install-box {
+  background-color: #0b1120;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cs-fleet-terminal-log {
+  background-color: #050914;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #a5f3fc;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.cs-fleet-btn-install {
+  background-color: rgba(6, 182, 212, 0.15);
+  border: 1px dashed rgba(6, 182, 212, 0.5);
+  color: #38bdf8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cs-fleet-btn-install:hover {
+  background-color: rgba(6, 182, 212, 0.25);
+  border-color: #06b6d4;
+  color: #ffffff;
+}
+

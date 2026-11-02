@@ -496,14 +496,17 @@
         if (onActionClose) onActionClose();
       });
     } else if (hasSSH && !hasAgent) {
-      // 2 BUTTONS SSH ONLY (SFTP, Shell)
-      actionsRow.className = 'cs-fleet-card-actions cols-2';
+      // 3 BUTTONS (SFTP, Shell, and 1-Click Install Agent)
+      actionsRow.className = 'cs-fleet-card-actions';
       actionsRow.innerHTML = `
         <button class="cs-fleet-btn-action cs-fleet-btn-sftp" title="Открыть SFTP">
           ${ICONS.sftp} <span>SFTP</span>
         </button>
         <button class="cs-fleet-btn-action cs-fleet-btn-shell" title="Запустить SSH PTY Терминал">
           ${ICONS.shell} <span>Шелл</span>
+        </button>
+        <button class="cs-fleet-btn-action cs-fleet-btn-agent" style="border-style:dashed;" title="1-Click установка демона Config Studio Agent по SSH">
+          <span>🚀 +Агент</span>
         </button>
       `;
 
@@ -517,6 +520,12 @@
         e.stopPropagation();
         launchShell(s);
         if (onActionClose) onActionClose();
+      });
+
+      actionsRow.querySelector('.cs-fleet-btn-agent').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (onActionClose) onActionClose();
+        openInstallAgentModal(s);
       });
     } else if (hasAgent && !hasSSH) {
       // 1 BUTTON AGENT ONLY
@@ -663,14 +672,34 @@
       } else if (activeTab === 'agent') {
         const agent = srv.connection?.agent || {};
         const isEnabled = Boolean(agent.enabled);
+        const hasSSH = Boolean(srv.connection?.ssh?.host);
+
         body.innerHTML = `
+          ${hasSSH && !isEnabled ? `
+            <div class="cs-fleet-install-box" style="margin-bottom:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div>
+                  <div style="font-weight:700;font-size:12px;color:#ffffff;display:flex;align-items:center;gap:6px;">
+                    <span>🚀 1-Click Установка Агента на сервер</span>
+                  </div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+                    Ядро Config Studio автоматически загрузит бинарник через SSH, настроит службу и выполнит сопряжение с кастомным портом.
+                  </div>
+                </div>
+                <button type="button" class="cs-fleet-btn-install" id="cs-fleet-start-install-btn">
+                  <span>🚀 Установить</span>
+                </button>
+              </div>
+            </div>
+          ` : ''}
+
           <div class="cs-fleet-form-group" style="flex-direction:row;align-items:center;gap:10px;">
             <input type="checkbox" id="srv-agent-enabled" ${isEnabled ? 'checked' : ''} />
             <label for="srv-agent-enabled" class="cs-fleet-form-label" style="margin:0;cursor:pointer;">Включить подключение к Config Studio Agent daemon</label>
           </div>
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">URL Агента</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-agent-url" value="${escapeHtml(agent.url || '')}" placeholder="http://10.0.1.10:8080" />
+            <input type="text" class="cs-fleet-form-input" id="srv-agent-url" value="${escapeHtml(agent.url || '')}" placeholder="http://10.0.1.10:8085" />
           </div>
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Секрет TOTP / Master Key из Core Vault</label>
@@ -681,6 +710,15 @@
           </div>
           <div class="cs-fleet-form-help">Агент обеспечивает быстрое чтение и запись файлов по HTTP REST API с двухфакторной TOTP верификацией.</div>
         `;
+
+        const installTriggerBtn = body.querySelector('#cs-fleet-start-install-btn');
+        if (installTriggerBtn) {
+          installTriggerBtn.addEventListener('click', () => {
+            saveFormValuesToState();
+            closeModal();
+            openInstallAgentModal(srv);
+          });
+        }
       } else if (activeTab === 'rollout') {
         const roll = srv.rollout || {};
         const hooks = roll.hooks || {};
@@ -870,6 +908,125 @@
         await loadServers();
       } catch (err) {
         window.ConfigStudio.showToast(`Ошибка в YAML: ${err.message}`, 'error');
+      }
+    });
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  // --- 1-Click Install Agent Modal Dialog with Custom Port ---
+  async function openInstallAgentModal(srv) {
+    const overlay = document.createElement('div');
+    overlay.className = 'cs-fleet-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'cs-fleet-modal-content';
+    modal.style.width = '620px';
+
+    const defaultPort = 8085;
+
+    modal.innerHTML = `
+      <div class="cs-fleet-modal-header">
+        <h3>1-Click Установка Агента: ${escapeHtml(srv.name)}</h3>
+        <button class="cs-fleet-modal-close">${ICONS.close}</button>
+      </div>
+      <div class="cs-fleet-modal-body" style="padding:18px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:12px;color:#cbd5e1;line-height:1.5;">
+          Автоматическая установка и запуск демона <b>config-studio-agent</b> через нативный SSH на <b>${escapeHtml(srv.connection?.ssh?.host || srv.name)}</b>.
+        </div>
+
+        <div class="cs-fleet-form-row">
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Кастомный порт агента</label>
+            <input type="number" id="cs-install-port" class="cs-fleet-form-input" value="${defaultPort}" min="1" max="65535" />
+            <span class="cs-fleet-form-help">Порт HTTP API демона (по умолчанию 8085)</span>
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Система службы</label>
+            <select id="cs-install-service-type" class="cs-fleet-form-select">
+              <option value="auto">Автоопределение (systemd / OpenRC)</option>
+              <option value="systemd">systemd (/etc/systemd/system)</option>
+              <option value="openrc">OpenRC (/etc/init.d)</option>
+              <option value="none">Без службы (nohup)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="cs-fleet-form-group" style="flex-direction:row;align-items:center;gap:10px;">
+          <input type="checkbox" id="cs-install-sudo" checked />
+          <label for="cs-install-sudo" class="cs-fleet-form-label" style="margin:0;cursor:pointer;">Использовать sudo (рекомендуется для системных служб)</label>
+        </div>
+
+        <div class="cs-fleet-terminal-log" id="cs-install-terminal" style="display:none;"></div>
+      </div>
+      <div class="cs-fleet-modal-footer">
+        <div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Отмена</button>
+          <button class="cs-fleet-btn-primary" id="cs-install-run-btn">
+            <span>🚀 Начать установку</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    function closeModal() {
+      overlay.remove();
+    }
+    modal.querySelector('.cs-fleet-modal-close').addEventListener('click', closeModal);
+    modal.querySelector('#cs-install-cancel-btn').addEventListener('click', closeModal);
+
+    const runBtn = modal.querySelector('#cs-install-run-btn');
+    const termEl = modal.querySelector('#cs-install-terminal');
+
+    runBtn.addEventListener('click', async () => {
+      const portInput = modal.querySelector('#cs-install-port');
+      const sudoInput = modal.querySelector('#cs-install-sudo');
+      const svcSelect = modal.querySelector('#cs-install-service-type');
+
+      const customPort = parseInt(portInput.value, 10) || 8085;
+      const useSudo = sudoInput ? sudoInput.checked : true;
+      const serviceType = svcSelect ? svcSelect.value : 'auto';
+
+      runBtn.disabled = true;
+      runBtn.innerHTML = `<span>⏳ Установка...</span>`;
+      termEl.style.display = 'block';
+      termEl.innerHTML = `<div>[Config Studio] Запуск 1-Click онбординга узла ${escapeHtml(srv.id)} на порт :${customPort}...</div>`;
+
+      try {
+        const res = await apiFetch(`/api/servers/install-agent/${encodeURIComponent(srv.id)}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            port: customPort,
+            useSudo: useSudo,
+            serviceType: serviceType
+          })
+        });
+
+        if (res.logs && res.logs.length > 0) {
+          termEl.innerHTML = res.logs.map(line => {
+            const isSuccess = line.startsWith('✓');
+            const isErr = line.toLowerCase().includes('ошибка') || line.toLowerCase().includes('error');
+            const color = isSuccess ? '#34d399' : (isErr ? '#f87171' : '#a5f3fc');
+            return `<div style="color:${color};margin-bottom:2px;">${escapeHtml(line)}</div>`;
+          }).join('');
+        }
+
+        if (res.success) {
+          termEl.innerHTML += `<div style="color:#34d399;font-weight:700;margin-top:6px;">🎉 Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. Узел переведен в гибридный режим!</div>`;
+          runBtn.innerHTML = `<span>✓ Готово</span>`;
+          window.ConfigStudio.showToast(`Агент успешно установлен на ${srv.name}!`, 'success');
+          await loadServers();
+          setTimeout(closeModal, 1800);
+        } else {
+          throw new Error(res.error || 'Сбой установки агента');
+        }
+      } catch (err) {
+        termEl.innerHTML += `<div style="color:#f87171;font-weight:700;margin-top:6px;">❌ Ошибка: ${escapeHtml(err.message)}</div>`;
+        runBtn.disabled = false;
+        runBtn.innerHTML = `<span>Повторить</span>`;
+        window.ConfigStudio.showToast(`Ошибка: ${err.message}`, 'error');
       }
     });
 
