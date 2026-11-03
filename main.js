@@ -1,5 +1,5 @@
 /**
- * Config Studio — Servers & Fleet Manager Official Plugin v1.2.0
+ * Config Studio — Servers & Fleet Manager Official Plugin v1.2.1
  * Unified Fleet Manager, servers.yaml inventory, native SSH/SFTP,
  * embedded Remote Agent integration, dynamic TOTP Web Crypto,
  * context menu file deployment and LAN discovery.
@@ -805,12 +805,28 @@
   }
 
   async function openSendToFleetModal(filename, fileContent) {
+    try {
+      const data = await apiFetch('/api/servers');
+      if (data && data.servers) {
+        servers = data.servers;
+        if (!servers.find(s => s.id === 'localhost')) {
+          servers.unshift({
+            id: 'localhost',
+            name: 'Localhost (Этот ПК)',
+            group: 'local',
+            tags: ['local']
+          });
+        }
+      }
+    } catch (_) {}
+
     const overlay = document.createElement('div');
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
-    modal.style.maxWidth = '520px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
+    modal.style.maxWidth = '580px';
+    modal.style.minHeight = '440px';
 
     // Build target server options (Localhost + All servers in fleet)
     const targetOptions = servers.map(s => {
@@ -1246,7 +1262,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
     modal.style.maxWidth = '580px';
 
     const defaultSubnet = detectDefaultSubnet();
@@ -1376,7 +1392,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
     modal.style.maxWidth = '540px';
 
     modal.innerHTML = `
@@ -1571,7 +1587,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
 
     let activeTab = 'general';
     let activeDropdownControllers = [];
@@ -1653,15 +1669,13 @@
               <input type="number" class="cs-fleet-form-input" id="srv-ssh-port" value="${ssh.port || 22}" />
             </div>
           </div>
-          <div class="cs-fleet-form-grid">
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">Пользователь</label>
-              <input type="text" class="cs-fleet-form-input" id="srv-ssh-user" value="${escapeHtml(ssh.user || 'root')}" placeholder="root или deploy" />
-            </div>
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">Ключ из Core Vault</label>
-              <div id="srv-ssh-identity-container"></div>
-            </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Пользователь</label>
+            <input type="text" class="cs-fleet-form-input" id="srv-ssh-user" value="${escapeHtml(ssh.user || 'root')}" placeholder="root или deploy" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Ключ из Core Vault</label>
+            <div id="srv-ssh-identity-container"></div>
           </div>
           <div class="cs-fleet-form-help">Безопасность Zero-Secret: закрытые ключи и пароли не сохраняются в YAML, а безопасно считываются из Core Vault.</div>
         `;
@@ -2000,7 +2014,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
     modal.style.maxWidth = '720px';
 
     modal.innerHTML = `
@@ -2056,7 +2070,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content';
+    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
     modal.style.maxWidth = '640px';
 
     modal.innerHTML = `

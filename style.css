@@ -456,13 +456,23 @@
   background-color: #0f172a;
   border: 1px solid #334155;
   border-radius: 16px;
-  width: 580px;
-  max-width: 100%;
+  width: 680px;
+  max-width: 95vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
   overflow: hidden;
+}
+
+.cs-fleet-server-modal {
+  width: 720px;
+  min-height: 580px;
+}
+
+.cs-fleet-server-modal .cs-fleet-modal-body {
+  min-height: 440px;
+  padding: 24px 28px;
 }
 
 .cs-fleet-modal-header {
@@ -571,10 +581,11 @@
   border-color: #06b6d4;
 }
 
-.cs-fleet-form-row {
+.cs-fleet-form-row,
+.cs-fleet-form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
 }
 
 .cs-fleet-form-help {
