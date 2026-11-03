@@ -721,3 +721,131 @@
   display: none !important;
 }
 
+/* ========================================================================== */
+/* Fleet Send Modal, Folder Picker & LAN Discovery Styles                     */
+/* ========================================================================== */
+.cs-remote-folder-picker {
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.95);
+  padding: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.cs-remote-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.cs-remote-folder-item:hover {
+  background: rgba(0, 210, 180, 0.15);
+  color: #00d2b4;
+}
+
+.cs-remote-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+}
+
+.cs-remote-crumb {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #58a6ff;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cs-remote-crumb:hover {
+  background: rgba(88, 166, 255, 0.2);
+}
+
+.cs-scan-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00d2b4;
+  box-shadow: 0 0 0 rgba(0, 210, 180, 0.4);
+  animation: csPulse 1.5s infinite;
+}
+
+@keyframes csPulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 210, 180, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(0, 210, 180, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 210, 180, 0); }
+}
+
+.cs-discovery-drawer {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-discovered-item {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.15s ease;
+}
+
+.cs-discovered-item:hover {
+  border-color: rgba(0, 210, 180, 0.4);
+  background: rgba(0, 210, 180, 0.03);
+}
+
+.cs-remote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cs-remote-badge.online {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.cs-remote-badge.ro {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.3);
+}
+
+.cs-remote-badge.unadopted {
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.4);
+  background: rgba(56, 139, 253, 0.15);
+}
+
+
