@@ -456,7 +456,7 @@
   background-color: #0f172a;
   border: 1px solid #334155;
   border-radius: 16px;
-  width: 680px;
+  width: 540px;
   max-width: 95vw;
   max-height: 90vh;
   display: flex;
@@ -465,13 +465,40 @@
   overflow: hidden;
 }
 
+/* Эталонные размеры модальных окон дизайн-системы @config-studio/ui */
+.cs-modal-sm, .cs-fleet-modal-sm { width: 400px; max-width: 95vw; }
+.cs-modal-md, .cs-fleet-modal-md { width: 540px; max-width: 95vw; }
+.cs-modal-lg, .cs-fleet-modal-lg { width: 720px; max-width: 95vw; }
+.cs-modal-xl, .cs-fleet-modal-xl { width: 900px; max-width: 95vw; }
+.cs-modal-fullscreen, .cs-fleet-modal-fullscreen { width: 100vw; height: 100vh; max-width: none; border-radius: 0; }
+
+/* Zero-Jitter Guarantee: фиксированная стабильная геометрия из ROADMAP */
+.cs-modal-fixed, .cs-fleet-modal-fixed {
+  height: 82vh;
+  min-height: 580px;
+  max-height: 820px;
+}
+
+.cs-modal-fixed .cs-fleet-modal-body,
+.cs-fleet-modal-fixed .cs-fleet-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px;
+}
+
 .cs-fleet-server-modal {
   width: 720px;
+  max-width: 95vw;
+  height: 82vh;
   min-height: 580px;
+  max-height: 820px;
 }
 
 .cs-fleet-server-modal .cs-fleet-modal-body {
-  min-height: 440px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 24px 28px;
 }
 

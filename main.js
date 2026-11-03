@@ -824,9 +824,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
-    modal.style.maxWidth = '580px';
-    modal.style.minHeight = '440px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-md';
 
     // Build target server options (Localhost + All servers in fleet)
     const targetOptions = servers.map(s => {
@@ -1262,8 +1260,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
-    modal.style.maxWidth = '580px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-md';
 
     const defaultSubnet = detectDefaultSubnet();
 
@@ -1392,8 +1389,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
-    modal.style.maxWidth = '540px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-md';
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
@@ -1587,7 +1583,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-lg cs-fleet-modal-fixed';
 
     let activeTab = 'general';
     let activeDropdownControllers = [];
@@ -2014,8 +2010,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
-    modal.style.maxWidth = '720px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-lg cs-fleet-modal-fixed';
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
@@ -2070,8 +2065,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-server-modal';
-    modal.style.maxWidth = '640px';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-lg';
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
