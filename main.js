@@ -645,6 +645,7 @@
     modal.className = 'cs-fleet-modal-content';
 
     let activeTab = 'general';
+    let activeDropdownControllers = [];
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
@@ -671,6 +672,9 @@
     `;
 
     function renderTab() {
+      activeDropdownControllers.forEach(c => { try { c.destroy(); } catch (_) {} });
+      activeDropdownControllers = [];
+
       const body = modal.querySelector('#cs-fleet-tab-content');
       modal.querySelectorAll('.cs-fleet-tab-btn').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-tab') === activeTab);
@@ -722,6 +726,48 @@
             </div>
             <div class="cs-fleet-form-group">
               <label class="cs-fleet-form-label">Ключ из Core Vault</label>
+              <div id="srv-ssh-identity-container"></div>
+            </div>
+          </div>
+          <div class="cs-fleet-form-help">Безопасность Zero-Secret: закрытые ключи и пароли не сохраняются в YAML, а безопасно считываются из Core Vault.</div>
+        `;
+
+        const identityContainer = body.querySelector('#srv-ssh-identity-container');
+        if (identityContainer) {
+          const options = [
+            {
+              value: '',
+              label: '(Авто / Агент ОС / Без ключа)',
+              subtitle: 'Использовать системный SSH-agent или интерактивный пароль',
+              badge: 'AUTO',
+              badgeColor: 'default',
+            },
+            ...vaultSecrets.map(v => ({
+              value: v.id,
+              label: v.title ? v.title : v.id,
+              subtitle: `ID: ${v.id}`,
+              badge: (v.type || 'secret').toUpperCase(),
+              badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
+              statusDot: 'online'
+            }))
+          ];
+
+          if (window.ConfigStudio?.ui?.renderDropdown) {
+            const ctrl = window.ConfigStudio.ui.renderDropdown(identityContainer, {
+              options,
+              value: ssh.identity || '',
+              placeholder: 'Выберите ключ из Vault...',
+              searchable: options.length > 5,
+              searchPlaceholder: 'Поиск секрета / ключа...',
+              onChange: (val) => {
+                srv.connection = srv.connection || {};
+                srv.connection.ssh = srv.connection.ssh || {};
+                srv.connection.ssh.identity = val || '';
+              }
+            });
+            activeDropdownControllers.push(ctrl);
+          } else {
+            identityContainer.innerHTML = `
               <select class="cs-fleet-form-select" id="srv-ssh-identity">
                 <option value="">(Авто / Агент ОС / Без ключа)</option>
                 ${vaultSecrets.map(v => {
@@ -729,10 +775,9 @@
                   return `<option value="${escapeHtml(v.id)}" ${ssh.identity === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
                 }).join('')}
               </select>
-            </div>
-          </div>
-          <div class="cs-fleet-form-help">Безопасность Zero-Secret: закрытые ключи и пароли не сохраняются в YAML, а безопасно считываются из Core Vault.</div>
-        `;
+            `;
+          }
+        }
       } else if (activeTab === 'agent') {
         const agent = srv.connection?.agent || {};
         const isEnabled = Boolean(agent.enabled);
@@ -767,16 +812,57 @@
           </div>
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Секрет TOTP / Master Key из Core Vault</label>
-            <select class="cs-fleet-form-select" id="srv-agent-secret">
-              <option value="">(Без Vault секрета / публичный)</option>
-              ${vaultSecrets.map(v => {
-                const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
-                return `<option value="${escapeHtml(v.id)}" ${agent.vaultSecret === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-              }).join('')}
-            </select>
+            <div id="srv-agent-secret-container"></div>
           </div>
           <div class="cs-fleet-form-help">Агент обеспечивает быстрое чтение и запись файлов по HTTP REST API с двухфакторной TOTP верификацией.</div>
         `;
+
+        const secretContainer = body.querySelector('#srv-agent-secret-container');
+        if (secretContainer) {
+          const options = [
+            {
+              value: '',
+              label: '(Без Vault секрета / публичный)',
+              subtitle: 'Без дополнительного TOTP или API токена',
+              badge: 'NONE',
+              badgeColor: 'default',
+            },
+            ...vaultSecrets.map(v => ({
+              value: v.id,
+              label: v.title ? v.title : v.id,
+              subtitle: `ID: ${v.id}`,
+              badge: (v.type || 'secret').toUpperCase(),
+              badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
+              statusDot: 'online'
+            }))
+          ];
+
+          if (window.ConfigStudio?.ui?.renderDropdown) {
+            const ctrl = window.ConfigStudio.ui.renderDropdown(secretContainer, {
+              options,
+              value: agent.vaultSecret || '',
+              placeholder: 'Выберите TOTP / Master Key...',
+              searchable: options.length > 5,
+              searchPlaceholder: 'Поиск секрета...',
+              onChange: (val) => {
+                srv.connection = srv.connection || {};
+                srv.connection.agent = srv.connection.agent || {};
+                srv.connection.agent.vaultSecret = val || '';
+              }
+            });
+            activeDropdownControllers.push(ctrl);
+          } else {
+            secretContainer.innerHTML = `
+              <select class="cs-fleet-form-select" id="srv-agent-secret">
+                <option value="">(Без Vault секрета / публичный)</option>
+                ${vaultSecrets.map(v => {
+                  const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
+                  return `<option value="${escapeHtml(v.id)}" ${agent.vaultSecret === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+                }).join('')}
+              </select>
+            `;
+          }
+        }
 
         const installTriggerBtn = body.querySelector('#cs-fleet-start-install-btn');
         if (installTriggerBtn) {
@@ -871,6 +957,8 @@
 
     // Close actions
     function closeModal() {
+      activeDropdownControllers.forEach(c => { try { c.destroy(); } catch (_) {} });
+      activeDropdownControllers = [];
       overlay.remove();
     }
     modal.querySelector('.cs-fleet-modal-close').addEventListener('click', closeModal);
@@ -1020,12 +1108,7 @@
           </div>
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Система службы</label>
-            <select id="cs-install-service-type" class="cs-fleet-form-select">
-              <option value="auto">Автоопределение (systemd / OpenRC)</option>
-              <option value="systemd">systemd (/etc/systemd/system)</option>
-              <option value="openrc">OpenRC (/etc/init.d)</option>
-              <option value="none">Без службы (nohup)</option>
-            </select>
+            <div id="cs-install-service-type-container"></div>
           </div>
         </div>
 
@@ -1047,7 +1130,36 @@
       </div>
     `;
 
+    let serviceTypeDropdown = null;
+    const serviceTypeContainer = modal.querySelector('#cs-install-service-type-container');
+    if (serviceTypeContainer) {
+      const svcOptions = [
+        { value: 'auto', label: 'Автоопределение (systemd / OpenRC)', subtitle: 'Автоматически определяет init-систему', badge: 'AUTO', badgeColor: 'blue' },
+        { value: 'systemd', label: 'systemd (/etc/systemd/system)', subtitle: 'Debian, Ubuntu, RHEL, CentOS, Fedora', badge: 'LINUX', badgeColor: 'purple' },
+        { value: 'openrc', label: 'OpenRC (/etc/init.d)', subtitle: 'Alpine Linux, Gentoo', badge: 'ALPINE', badgeColor: 'green' },
+        { value: 'none', label: 'Без службы (nohup фоновый процесс)', subtitle: 'Временный запуск без автозагрузки', badge: 'NOHUP', badgeColor: 'amber' }
+      ];
+
+      if (window.ConfigStudio?.ui?.renderDropdown) {
+        serviceTypeDropdown = window.ConfigStudio.ui.renderDropdown(serviceTypeContainer, {
+          options: svcOptions,
+          value: 'auto',
+          placeholder: 'Выберите тип службы...'
+        });
+      } else {
+        serviceTypeContainer.innerHTML = `
+          <select id="cs-install-service-type" class="cs-fleet-form-select">
+            <option value="auto">Автоопределение (systemd / OpenRC)</option>
+            <option value="systemd">systemd (/etc/systemd/system)</option>
+            <option value="openrc">OpenRC (/etc/init.d)</option>
+            <option value="none">Без службы (nohup)</option>
+          </select>
+        `;
+      }
+    }
+
     function closeModal() {
+      try { serviceTypeDropdown?.destroy(); } catch (_) {}
       overlay.remove();
     }
     modal.querySelector('.cs-fleet-modal-close').addEventListener('click', closeModal);
@@ -1063,7 +1175,7 @@
 
       const customPort = parseInt(portInput.value, 10) || 8085;
       const useSudo = sudoInput ? sudoInput.checked : true;
-      const serviceType = svcSelect ? svcSelect.value : 'auto';
+      const serviceType = serviceTypeDropdown ? serviceTypeDropdown.getValue() : (svcSelect ? svcSelect.value : 'auto');
 
       runBtn.disabled = true;
       runBtn.innerHTML = `<span>⏳ Установка...</span>`;
