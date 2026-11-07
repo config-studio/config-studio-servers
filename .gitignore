@@ -3,3 +3,7 @@ dist/
 *.cspkg
 .DS_Store
 *.log
+
+# doubled-graph
+.doubled-graph/logs/
+.doubled-graph/cache/
