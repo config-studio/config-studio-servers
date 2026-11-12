@@ -1,5 +1,5 @@
 /**
- * Config Studio — Servers & Fleet Manager Official Plugin v1.2.2
+ * Config Studio — Servers & Fleet Manager Official Plugin v1.2.3
  * Unified Fleet Manager, servers.yaml inventory, native SSH/SFTP,
  * embedded Remote Agent integration, dynamic TOTP Web Crypto,
  * context menu file deployment and LAN discovery.
@@ -1320,7 +1320,7 @@
     async function triggerScan() {
       const subnet = subnetInput.value.trim() || '192.168.0';
       scanBtn.disabled = true;
-      scanBtn.innerHTML = `<span>⏳ Поиск...</span>`;
+      scanBtn.innerHTML = `<span>Поиск...</span>`;
       progressEl.style.display = 'flex';
       progressText.textContent = `Сканирование ${subnet}.1..254...`;
       resultsContainer.innerHTML = '';
@@ -1998,16 +1998,62 @@
   }
 
   // ==========================================================================
-  // Direct servers.yaml Raw Modal
+  // Direct servers.yaml Raw Editor (Monaco Tab via Core ConfigStudio API)
   // ==========================================================================
   async function openRawYAMLModal() {
     let rawContent = '';
     try {
-      const data = await apiFetch('/api/servers/raw');
-      rawContent = data.content || '';
+      const res = await fetch('/api/servers/raw', {
+        headers: { 'X-ConfigStudio-Web': '1' }
+      });
+      if (!res.ok) {
+        let errMsg = res.statusText;
+        try {
+          const j = await res.json();
+          if (j.error) errMsg = j.error;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+      rawContent = await res.text();
     } catch (e) {
       showToast('Ошибка загрузки servers.yaml: ' + e.message, 'error');
       return;
+    }
+
+    if (window.ConfigStudio && typeof window.ConfigStudio.openCustomTab === 'function') {
+      try {
+        await window.ConfigStudio.openCustomTab({
+          path: 'fleet://servers.yaml',
+          name: 'servers.yaml',
+          content: rawContent,
+          language: 'yaml',
+          badge: 'FLEET',
+          onSave: async (newContent) => {
+            const saveRes = await fetch('/api/servers/raw', {
+              method: 'PUT',
+              headers: {
+                'X-ConfigStudio-Web': '1',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ content: newContent })
+            });
+            if (!saveRes.ok) {
+              let msg = saveRes.statusText;
+              try {
+                const j = await saveRes.json();
+                if (j.error) msg = j.error;
+              } catch (_) {}
+              throw new Error(msg);
+            }
+            showToast('servers.yaml успешно сохранен', 'success');
+            await loadServers();
+            renderDropdown();
+          }
+        });
+        return;
+      } catch (err) {
+        console.warn('[servers] openCustomTab failed, falling back to modal:', err);
+      }
     }
 
     const overlay = document.createElement('div');
@@ -2025,7 +2071,7 @@
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
       <div class="cs-fleet-modal-body" style="padding:16px;">
-        <textarea id="cs-fleet-yaml-textarea" class="cs-fleet-form-textarea" rows="18" style="font-family:monospace;font-size:12px;background:#0d1117;color:#38bdf8;">${escapeHtml(rawContent)}</textarea>
+        <textarea id="cs-fleet-yaml-textarea" class="cs-fleet-form-textarea" rows="18" style="font-family:monospace;font-size:12px;background:var(--cs-srv-bg-base);color:var(--cs-srv-text-primary);">${escapeHtml(rawContent)}</textarea>
       </div>
       <div class="cs-fleet-modal-footer">
         <div></div>
@@ -2045,13 +2091,26 @@
     modal.querySelector('#cs-fleet-yaml-save').addEventListener('click', async () => {
       const newYaml = modal.querySelector('#cs-fleet-yaml-textarea').value;
       try {
-        await apiFetch('/api/servers/raw', {
+        const saveRes = await fetch('/api/servers/raw', {
           method: 'PUT',
+          headers: {
+            'X-ConfigStudio-Web': '1',
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({ content: newYaml })
         });
+        if (!saveRes.ok) {
+          let msg = saveRes.statusText;
+          try {
+            const j = await saveRes.json();
+            if (j.error) msg = j.error;
+          } catch (_) {}
+          throw new Error(msg);
+        }
         showToast('servers.yaml обновлен', 'success');
         closeModal();
         await loadServers();
+        renderDropdown();
       } catch (err) {
         showToast(`Ошибка сохранения YAML: ${err.message}`, 'error');
       }

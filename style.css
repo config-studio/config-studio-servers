@@ -22,21 +22,10 @@
 html:not(.dark),
 .theme-light,
 .theme-light-active,
-[data-theme="light"],
-body:not(.dark) {
-  --cs-srv-bg-base: var(--color-base, #f8fafc);
-  --cs-srv-bg-surface: var(--color-surface, #ffffff);
-  --cs-srv-bg-surface-hover: var(--color-surface-hover, #f1f5f9);
-  --cs-srv-bg-card: var(--bg-card, #ffffff);
-  --cs-srv-bg-subtle: #f1f5f9;
-  --cs-srv-border: var(--color-border, #e2e8f0);
-  --cs-srv-border-subtle: #e2e8f0;
-  --cs-srv-text-primary: var(--text-primary, #0f172a);
-  --cs-srv-text-secondary: var(--text-secondary, #334155);
-  --cs-srv-text-muted: var(--text-muted, #64748b);
-  --cs-srv-accent: var(--color-accent, #0284c7);
-  --cs-srv-accent-hover: var(--color-accent-hover, #0369a1);
-  --cs-srv-overlay: rgba(15, 23, 42, 0.5);
+[data-theme="light"] {
+  --cs-srv-bg-subtle: rgba(0, 0, 0, 0.03);
+  --cs-srv-border-subtle: rgba(0, 0, 0, 0.06);
+  --cs-srv-overlay: rgba(15, 23, 42, 0.4);
 }
 
 /* --- Universal Header Switcher --- */
@@ -225,7 +214,7 @@ html:not(.dark) .cs-fleet-badge.local,
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-bottom: 1px solid var(--cs-srv-border);
 }
 
@@ -240,7 +229,7 @@ html:not(.dark) .cs-fleet-badge.local,
 
 .cs-fleet-count-pill {
   font-size: 10px;
-  background-color: var(--cs-srv-bg-surface);
+  background-color: var(--cs-srv-bg-base);
   color: var(--cs-srv-text-muted);
   padding: 1px 6px;
   border-radius: 4px;
@@ -251,9 +240,9 @@ html:not(.dark) .cs-fleet-badge.local,
   font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
-  background-color: rgba(6, 182, 212, 0.12);
+  background-color: var(--cs-srv-bg-surface-hover);
   color: var(--cs-srv-accent);
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
@@ -263,14 +252,15 @@ html:not(.dark) .cs-fleet-badge.local,
 }
 
 .cs-fleet-add-btn:hover {
-  background-color: rgba(6, 182, 212, 0.22);
+  background-color: var(--cs-srv-bg-surface);
+  border-color: var(--cs-srv-accent);
   color: var(--cs-srv-accent-hover);
 }
 
 /* Filter & Search Bar */
 .cs-fleet-filter-bar {
   padding: 8px 12px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-bottom: 1px solid var(--cs-srv-border);
   display: flex;
   flex-direction: column;
@@ -279,7 +269,7 @@ html:not(.dark) .cs-fleet-badge.local,
 
 .cs-fleet-search-input {
   width: 100%;
-  background-color: var(--cs-srv-bg-surface);
+  background-color: var(--cs-srv-bg-base);
   border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
   padding: 6px 10px;
@@ -490,9 +480,15 @@ html:not(.dark) .cs-fleet-badge.local,
 
 /* Button 2: SFTP */
 .cs-fleet-btn-sftp {
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: rgba(255, 255, 255, 0.06);
   color: var(--cs-srv-text-secondary);
-  border-color: var(--cs-srv-border);
+  border: 1px solid var(--cs-srv-border);
+}
+
+html:not(.dark) .cs-fleet-btn-sftp,
+.theme-light .cs-fleet-btn-sftp,
+[data-theme="light"] .cs-fleet-btn-sftp {
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .cs-fleet-btn-sftp:hover {
@@ -555,7 +551,7 @@ html:not(.dark) .cs-fleet-btn-local,
 /* Footer of Dropdown */
 .cs-fleet-dropdown-footer {
   padding: 8px 12px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-top: 1px solid var(--cs-srv-border);
   display: flex;
   align-items: center;
@@ -650,7 +646,7 @@ html:not(.dark) .cs-fleet-btn-local,
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-bottom: 1px solid var(--cs-srv-border);
 }
 
@@ -684,7 +680,7 @@ html:not(.dark) .cs-fleet-btn-local,
 .cs-fleet-modal-tabs {
   display: flex;
   padding: 0 20px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-bottom: 1px solid var(--cs-srv-border);
   gap: 16px;
 }
@@ -774,12 +770,12 @@ html:not(.dark) .cs-fleet-btn-local,
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: var(--cs-srv-bg-surface);
   border-top: 1px solid var(--cs-srv-border);
 }
 
 .cs-fleet-btn-secondary {
-  background-color: var(--cs-srv-bg-subtle);
+  background-color: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--cs-srv-border);
   color: var(--cs-srv-text-secondary);
   padding: 8px 14px;
@@ -788,6 +784,12 @@ html:not(.dark) .cs-fleet-btn-local,
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+html:not(.dark) .cs-fleet-btn-secondary,
+.theme-light .cs-fleet-btn-secondary,
+[data-theme="light"] .cs-fleet-btn-secondary {
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .cs-fleet-btn-secondary:hover {
