@@ -1,5 +1,5 @@
 /**
- * Config Studio — Servers & Fleet Manager Official Plugin v1.2.3
+ * Config Studio — Servers & Fleet Manager Official Plugin v1.2.4
  * Unified Fleet Manager, servers.yaml inventory, native SSH/SFTP,
  * embedded Remote Agent integration, dynamic TOTP Web Crypto,
  * context menu file deployment and LAN discovery.
@@ -478,9 +478,10 @@
           openEditModal(null);
         });
 
-        // 2. Filter & Tags Bar
+        // 2. Filter & Tags Bar (Core PillTabs Architecture)
         const filterBar = document.createElement('div');
         filterBar.className = 'cs-fleet-filter-bar';
+        filterBar.addEventListener('click', (e) => e.stopPropagation());
 
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
@@ -497,31 +498,60 @@
         const allTags = new Set();
         servers.forEach(s => (s.tags || []).forEach(t => allTags.add(t)));
 
-        const tagsScroll = document.createElement('div');
-        tagsScroll.className = 'cs-fleet-tags-scroll';
-
-        const allPill = document.createElement('button');
-        allPill.className = `cs-fleet-tag-pill ${activeTagFilter === 'all' ? 'active' : ''}`;
-        allPill.textContent = `Все (${servers.length})`;
-        allPill.addEventListener('click', () => {
+        // Reset filter if active tag no longer exists
+        if (activeTagFilter !== 'all' && !allTags.has(activeTagFilter)) {
           activeTagFilter = 'all';
-          renderDropdown();
-        });
-        tagsScroll.appendChild(allPill);
+        }
 
-        allTags.forEach(tag => {
-          const count = servers.filter(s => (s.tags || []).includes(tag)).length;
-          const pill = document.createElement('button');
-          pill.className = `cs-fleet-tag-pill ${activeTagFilter === tag ? 'active' : ''}`;
-          pill.textContent = `#${tag} (${count})`;
-          pill.addEventListener('click', () => {
-            activeTagFilter = tag;
-            renderDropdown();
+        const pillTrack = document.createElement('div');
+        pillTrack.className = 'cs-fleet-pill-track';
+        pillTrack.setAttribute('role', 'tablist');
+
+        // Horizontal mouse wheel scrolling for the track
+        pillTrack.addEventListener('wheel', (e) => {
+          if (e.deltaY !== 0 && e.deltaX === 0) {
+            e.preventDefault();
+            pillTrack.scrollLeft += e.deltaY;
+          }
+        }, { passive: false });
+
+        const tabsMap = new Map();
+
+        function createPillTab(id, label, count) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.role = 'tab';
+          btn.className = `cs-fleet-pill-tab ${activeTagFilter === id ? 'active' : ''}`;
+          btn.setAttribute('aria-selected', activeTagFilter === id ? 'true' : 'false');
+          btn.innerHTML = `
+            <span>${escapeHtml(label)}</span>
+            <span class="cs-fleet-pill-badge">${count}</span>
+          `;
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (activeTagFilter === id) return;
+            activeTagFilter = id;
+            tabsMap.forEach((tabBtn, tabId) => {
+              const isSel = tabId === activeTagFilter;
+              tabBtn.classList.toggle('active', isSel);
+              tabBtn.setAttribute('aria-selected', isSel ? 'true' : 'false');
+            });
+            renderCards();
           });
-          tagsScroll.appendChild(pill);
+          tabsMap.set(id, btn);
+          return btn;
+        }
+
+        // 'All' tab
+        pillTrack.appendChild(createPillTab('all', 'Все', servers.length));
+
+        // Individual tag tabs (sorted alphabetically)
+        Array.from(allTags).sort().forEach(tag => {
+          const count = servers.filter(s => (s.tags || []).includes(tag)).length;
+          pillTrack.appendChild(createPillTab(tag, `#${tag}`, count));
         });
 
-        filterBar.appendChild(tagsScroll);
+        filterBar.appendChild(pillTrack);
         dropdown.appendChild(filterBar);
 
         // 3. Servers List Container
