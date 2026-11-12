@@ -1,5 +1,5 @@
 /**
- * Config Studio — Servers & Fleet Manager Official Plugin v1.2.1
+ * Config Studio — Servers & Fleet Manager Official Plugin v1.2.2
  * Unified Fleet Manager, servers.yaml inventory, native SSH/SFTP,
  * embedded Remote Agent integration, dynamic TOTP Web Crypto,
  * context menu file deployment and LAN discovery.
@@ -23,7 +23,11 @@
     folder: '<svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>',
     send: '<svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>',
     shield: '<svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
-    check: '<svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+    check: '<svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+    search: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>',
+    key: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>',
+    warning: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>',
+    arrowRight: '<svg style="width:12px;height:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>'
   };
 
   // --- State ---
@@ -453,7 +457,7 @@
           </div>
           <div style="display:flex;gap:6px;">
             <button class="cs-fleet-add-btn" id="cs-fleet-lan-scan-btn" title="Поиск агентов в LAN">
-              🔍 <span>LAN</span>
+              ${ICONS.search} <span>LAN</span>
             </button>
             <button class="cs-fleet-add-btn" id="cs-fleet-add-node-btn">
               ${ICONS.plus} <span>Узел</span>
@@ -565,7 +569,7 @@
             <span class="cs-fleet-status-dot online"></span>
             <span>Готов к работе</span>
           </div>
-          <span class="cs-fleet-yaml-link">servers.yaml ➔</span>
+          <span class="cs-fleet-yaml-link">servers.yaml ${ICONS.arrowRight}</span>
         `;
         footer.querySelector('.cs-fleet-yaml-link').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -650,7 +654,7 @@
       </div>
       <div class="cs-fleet-card-meta">
         <div class="cs-fleet-card-host">${escapeHtml(hostInfo)}</div>
-        ${s.group ? `<div style="color:#00d2b4;font-size:10px;font-family:monospace;">[${escapeHtml(s.group)}]</div>` : ''}
+        ${s.group ? `<div class="cs-fleet-card-group-pill">[${escapeHtml(s.group)}]</div>` : ''}
       </div>
     `;
 
@@ -722,7 +726,7 @@
           ${ICONS.shell} <span>Шелл</span>
         </button>
         <button class="cs-fleet-btn-action cs-fleet-btn-agent" style="border-style:dashed;" title="1-Click Установка агента Config Studio по SSH">
-          <span>⚡ +Агент</span>
+          ${ICONS.agent} <span>+Агент</span>
         </button>
       `;
 
@@ -771,12 +775,12 @@
   }
 
   // ==========================================================================
-  // Context Menu: Send File to Fleet Node («📁 Отправить на узел флота...»)
+  // Context Menu: Send File to Fleet Node («Отправить на узел флота...»)
   // ==========================================================================
   if (typeof window.ConfigStudio.registerContextMenu === 'function') {
     window.ConfigStudio.registerContextMenu({
       id: 'fleet-send-file',
-      title: '📁 Отправить на узел флота...',
+      title: 'Отправить на узел флота...',
       group: 'fleet',
       order: 15,
       onClick: async (file) => {
@@ -1267,31 +1271,31 @@
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span>🔍</span>
+          <span>${ICONS.search}</span>
           <span style="font-weight:700;font-size:14px;">Автообнаружение агентов в локальной сети</span>
         </div>
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
 
       <div class="cs-fleet-modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
-        <p style="font-size:12px;color:#8b949e;margin:0;">
+        <p style="font-size:12px;color:var(--cs-srv-text-muted);margin:0;">
           Параллельное сканирование локальной подсети для обнаружения запущенных демонов config-studio-agent (порт :8085).
         </p>
 
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" class="cs-fleet-form-input" id="cs-lan-subnet" value="${escapeHtml(defaultSubnet)}" placeholder="192.168.0" style="flex:1;" />
-          <button class="cs-fleet-btn-primary" id="cs-lan-scan-btn" type="button" style="white-space:nowrap;">
-            <span>🔍 Сканировать LAN</span>
+          <button class="cs-fleet-btn-primary" id="cs-lan-scan-btn" type="button" style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
+            ${ICONS.search} <span>Сканировать LAN</span>
           </button>
         </div>
 
-        <div id="cs-lan-progress" style="display:none;align-items:center;gap:8px;font-size:12px;color:#00d2b4;">
+        <div id="cs-lan-progress" style="display:none;align-items:center;gap:8px;font-size:12px;color:var(--cs-srv-accent);">
           <span class="cs-scan-pulse"></span>
           <span id="cs-lan-progress-text">Сканирование подсети...</span>
         </div>
 
         <div class="cs-discovery-drawer" id="cs-lan-results" style="max-height:260px;overflow-y:auto;">
-          <div style="text-align:center;color:#64748b;font-size:11.5px;padding:12px;">Нажмите «Сканировать LAN» для запуска поиска</div>
+          <div style="text-align:center;color:var(--cs-srv-text-muted);font-size:11.5px;padding:12px;">Нажмите «Сканировать LAN» для запуска поиска</div>
         </div>
       </div>
 
@@ -1340,8 +1344,8 @@
           </div>
           <div>
             ${alreadyInFleet
-              ? `<span style="font-size:11px;color:#34d399;font-weight:600;">✓ Подключен</span>`
-              : `<button class="cs-fleet-btn-primary cs-adopt-btn" style="padding:4px 10px;font-size:11px;">${ICONS.plus} <span>Принять (Adopt)</span></button>`
+              ? `<span style="font-size:11px;color:#10b981;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${ICONS.check} <span>Подключен</span></span>`
+              : `<button class="cs-fleet-btn-primary cs-adopt-btn" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">${ICONS.plus} <span>Принять (Adopt)</span></button>`
             }
           </div>
         `;
@@ -1350,10 +1354,10 @@
           const btn = itemEl.querySelector('.cs-adopt-btn');
           btn.addEventListener('click', async () => {
             btn.disabled = true;
-            btn.innerHTML = `<span>⏳ Сопряжение...</span>`;
+            btn.innerHTML = `<span>Сопряжение...</span>`;
             const ok = await adoptDiscoveredAgent(agent);
             if (ok) {
-              btn.replaceWith(document.createRange().createContextualFragment(`<span style="font-size:11px;color:#34d399;font-weight:600;">✓ Принят во флот!</span>`));
+              btn.replaceWith(document.createRange().createContextualFragment(`<span style="font-size:11px;color:#10b981;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${ICONS.check} <span>Принят во флот!</span></span>`));
             } else {
               btn.disabled = false;
               btn.innerHTML = `<span>Повторить</span>`;
@@ -1366,10 +1370,10 @@
 
       progressEl.style.display = 'none';
       scanBtn.disabled = false;
-      scanBtn.innerHTML = `<span>🔍 Сканировать LAN</span>`;
+      scanBtn.innerHTML = `${ICONS.search} <span>Сканировать LAN</span>`;
 
       if (foundCount === 0) {
-        resultsContainer.innerHTML = `<div style="text-align:center;color:#8b949e;padding:16px;font-size:12px;">Узлы config-studio-agent не обнаружены в подсети ${escapeHtml(subnet)}.*</div>`;
+        resultsContainer.innerHTML = `<div style="text-align:center;color:var(--cs-srv-text-muted);padding:16px;font-size:12px;">Узлы config-studio-agent не обнаружены в подсети ${escapeHtml(subnet)}.*</div>`;
       }
     }
 
@@ -1739,8 +1743,8 @@
                 <span style="font-weight:700;font-size:12px;color:#38bdf8;">1-Click Remote Agent Installer</span>
                 <span style="font-size:11px;color:#94a3b8;">Автоматическая установка и запуск агента на ${escapeHtml(srv.connection.ssh.host)} по SSH</span>
               </div>
-              <button type="button" class="cs-fleet-btn-primary" id="cs-open-installer-btn" style="padding:6px 12px;font-size:11px;white-space:nowrap;">
-                ⚡ <span>Установить агент</span>
+              <button type="button" class="cs-fleet-btn-primary" id="cs-open-installer-btn" style="padding:6px 12px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
+                ${ICONS.agent} <span>Установить агент</span>
               </button>
             </div>
           ` : ''}
@@ -1765,8 +1769,8 @@
 
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
             <div class="cs-fleet-form-help">Агент обеспечивает быстрое чтение и запись файлов по HTTP REST API с двухфакторной TOTP верификацией.</div>
-            <button type="button" class="cs-fleet-btn-secondary" id="cs-srv-manage-tokens-btn" style="padding:4px 10px;font-size:11px;white-space:nowrap;">
-              🔑 <span>Токены мониторинга...</span>
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-srv-manage-tokens-btn" style="padding:4px 10px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
+              ${ICONS.key} <span>Токены мониторинга...</span>
             </button>
           </div>
         `;
@@ -1940,7 +1944,7 @@
         if (errBanner) {
           errBanner.innerHTML = `
             <div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:8px;padding:10px 12px;color:#fca5a5;font-size:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-              <span>⚠️</span>
+              <span>${ICONS.warning}</span>
               <span>Пожалуйста, укажите уникальный ID узла на вкладке «1. Основные»</span>
             </div>
           `;
@@ -2045,7 +2049,7 @@
           method: 'PUT',
           body: JSON.stringify({ content: newYaml })
         });
-        showToast('✓ servers.yaml обновлен', 'success');
+        showToast('servers.yaml обновлен', 'success');
         closeModal();
         await loadServers();
       } catch (err) {
@@ -2070,16 +2074,16 @@
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span>⚡</span>
+          <span>${ICONS.agent}</span>
           <span style="font-weight:700;font-size:14px;">1-Click Установка Remote Agent на ${escapeHtml(srv.name)}</span>
         </div>
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
 
       <div class="cs-fleet-modal-body" style="padding:16px 20px;">
-        <div style="background:rgba(255,255,255,0.03);border:1px solid #30363d;border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;color:#c9d1d9;">
-          <div><b>Целевой SSH сервер:</b> <span style="font-family:monospace;color:#38bdf8;">${escapeHtml(srv.connection?.ssh?.user || 'root')}@${escapeHtml(srv.connection?.ssh?.host)}:${srv.connection?.ssh?.port || 22}</span></div>
-          <div style="margin-top:4px;color:#8b949e;">Config Studio автоматически подключится по SSH, определит архитектуру (Linux x86_64/arm64), скопирует бинарник по SFTP, зарегистрирует и запустит службу демона (systemd/OpenRC) и переведет узел в гибридный режим.</div>
+        <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;color:var(--cs-srv-text-primary);">
+          <div><b>Целевой SSH сервер:</b> <span style="font-family:monospace;color:var(--cs-srv-accent);">${escapeHtml(srv.connection?.ssh?.user || 'root')}@${escapeHtml(srv.connection?.ssh?.host)}:${srv.connection?.ssh?.port || 22}</span></div>
+          <div style="margin-top:4px;color:var(--cs-srv-text-muted);">Config Studio автоматически подключится по SSH, определит архитектуру (Linux x86_64/arm64), скопирует бинарник по SFTP, зарегистрирует и запустит службу демона (systemd/OpenRC) и переведет узел в гибридный режим.</div>
         </div>
 
         <div class="cs-fleet-form-grid" style="margin-bottom:12px;">
@@ -2099,8 +2103,8 @@
         </div>
 
         <!-- Terminal Logs Window -->
-        <div id="cs-install-terminal" style="background:#090d13;border:1px solid #21262d;border-radius:8px;padding:12px;font-family:monospace;font-size:11px;min-height:160px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;color:#38bdf8;">
-          <div style="color:#64748b;">[Готов к установке] Нажмите «Начать установку»...</div>
+        <div id="cs-install-terminal" style="background:var(--cs-srv-bg-base);border:1px solid var(--cs-srv-border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;min-height:160px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;color:var(--cs-srv-accent);">
+          <div style="color:var(--cs-srv-text-muted);">[Готов к установке] Нажмите «Начать установку»...</div>
         </div>
       </div>
 
@@ -2108,8 +2112,8 @@
         <div></div>
         <div style="display:flex;gap:8px;">
           <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Закрыть</button>
-          <button class="cs-fleet-btn-primary" id="cs-install-run-btn">
-            ⚡ <span>Начать установку</span>
+          <button class="cs-fleet-btn-primary" id="cs-install-run-btn" style="display:inline-flex;align-items:center;gap:6px;">
+            ${ICONS.agent} <span>Начать установку</span>
           </button>
         </div>
       </div>
@@ -2186,8 +2190,8 @@
         }
 
         if (res.success) {
-          termEl.innerHTML += `<div style="color:#34d399;font-weight:700;margin-top:6px;">🎉 Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. Узел переведен в гибридный режим!</div>`;
-          runBtn.innerHTML = `<span>✓ Готово</span>`;
+          termEl.innerHTML += `<div style="color:#10b981;font-weight:700;margin-top:6px;">Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. Узел переведен в гибридный режим!</div>`;
+          runBtn.innerHTML = `<span>Готово</span>`;
           showToast(`Агент успешно установлен на ${srv.name}!`, 'success');
           await loadServers();
           setTimeout(closeModal, 1800);
@@ -2195,7 +2199,7 @@
           throw new Error(res.error || 'Сбой установки агента');
         }
       } catch (err) {
-        termEl.innerHTML += `<div style="color:#f87171;font-weight:700;margin-top:6px;">❌ Ошибка: ${escapeHtml(err.message)}</div>`;
+        termEl.innerHTML += `<div style="color:#ef4444;font-weight:700;margin-top:6px;">Ошибка: ${escapeHtml(err.message)}</div>`;
         runBtn.disabled = false;
         runBtn.innerHTML = `<span>Повторить</span>`;
         showToast(`Ошибка: ${err.message}`, 'error');
@@ -2226,7 +2230,7 @@
             <div class="cs-fleet-sidebar-header">
               <span style="font-weight:700;font-size:12px;">Узлы инвентаря</span>
               <div style="display:flex;gap:6px;">
-                <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-lan-btn" title="Поиск агентов в LAN">🔍 <span>LAN</span></button>
+                <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-lan-btn" title="Поиск агентов в LAN">${ICONS.search} <span>LAN</span></button>
                 <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-add-btn">${ICONS.plus} <span>Добавить</span></button>
               </div>
             </div>

@@ -21,12 +21,14 @@
 
 html:not(.dark),
 .theme-light,
-.theme-light-active {
+.theme-light-active,
+[data-theme="light"],
+body:not(.dark) {
   --cs-srv-bg-base: var(--color-base, #f8fafc);
   --cs-srv-bg-surface: var(--color-surface, #ffffff);
   --cs-srv-bg-surface-hover: var(--color-surface-hover, #f1f5f9);
   --cs-srv-bg-card: var(--bg-card, #ffffff);
-  --cs-srv-bg-subtle: #f8fafc;
+  --cs-srv-bg-subtle: #f1f5f9;
   --cs-srv-border: var(--color-border, #e2e8f0);
   --cs-srv-border-subtle: #e2e8f0;
   --cs-srv-text-primary: var(--text-primary, #0f172a);
@@ -145,10 +147,43 @@ html:not(.dark),
   padding: 1px 4px;
 }
 
+/* Light Theme Badge Overrides for WCAG AAA contrast */
+html:not(.dark) .cs-fleet-badge.hybrid,
+.theme-light .cs-fleet-badge.hybrid,
+[data-theme="light"] .cs-fleet-badge.hybrid {
+  background-color: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.3);
+}
+
+html:not(.dark) .cs-fleet-badge.agent,
+.theme-light .cs-fleet-badge.agent,
+[data-theme="light"] .cs-fleet-badge.agent {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+html:not(.dark) .cs-fleet-badge.ssh,
+.theme-light .cs-fleet-badge.ssh,
+[data-theme="light"] .cs-fleet-badge.ssh {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+html:not(.dark) .cs-fleet-badge.local,
+.theme-light .cs-fleet-badge.local,
+[data-theme="light"] .cs-fleet-badge.local {
+  background-color: rgba(100, 116, 139, 0.1);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.25);
+}
+
 .cs-fleet-chevron {
   width: 14px;
   height: 14px;
-  color: #94a3b8;
+  color: var(--cs-srv-text-muted);
   transition: transform 0.2s ease;
 }
 
@@ -197,7 +232,7 @@ html:not(.dark),
 .cs-fleet-dropdown-title {
   font-size: 12px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--cs-srv-text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -205,20 +240,20 @@ html:not(.dark),
 
 .cs-fleet-count-pill {
   font-size: 10px;
-  background-color: #1e293b;
-  color: #94a3b8;
+  background-color: var(--cs-srv-bg-surface);
+  color: var(--cs-srv-text-muted);
   padding: 1px 6px;
   border-radius: 4px;
-  border: 1px solid #334155;
+  border: 1px solid var(--cs-srv-border);
 }
 
 .cs-fleet-add-btn {
   font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
-  background-color: rgba(6, 182, 212, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(6, 182, 212, 0.35);
+  background-color: rgba(6, 182, 212, 0.12);
+  color: var(--cs-srv-accent);
+  border: 1px solid rgba(6, 182, 212, 0.3);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
@@ -228,15 +263,15 @@ html:not(.dark),
 }
 
 .cs-fleet-add-btn:hover {
-  background-color: rgba(6, 182, 212, 0.25);
-  color: #e0f2fe;
+  background-color: rgba(6, 182, 212, 0.22);
+  color: var(--cs-srv-accent-hover);
 }
 
 /* Filter & Search Bar */
 .cs-fleet-filter-bar {
   padding: 8px 12px;
-  background-color: rgba(15, 23, 42, 0.6);
-  border-bottom: 1px solid #1e293b;
+  background-color: var(--cs-srv-bg-subtle);
+  border-bottom: 1px solid var(--cs-srv-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -244,19 +279,24 @@ html:not(.dark),
 
 .cs-fleet-search-input {
   width: 100%;
-  background-color: #1e293b;
-  border: 1px solid #334155;
+  background-color: var(--cs-srv-bg-surface);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 11px;
-  color: #f8fafc;
+  color: var(--cs-srv-text-primary);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
 
+.cs-fleet-search-input::placeholder {
+  color: var(--cs-srv-text-muted);
+}
+
 .cs-fleet-search-input:focus {
-  border-color: #06b6d4;
+  border-color: var(--cs-srv-accent);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
 }
 
 .cs-fleet-tags-scroll {
@@ -271,23 +311,23 @@ html:not(.dark),
   font-size: 10.5px;
   padding: 2px 8px;
   border-radius: 5px;
-  background-color: #1e293b;
-  color: #94a3b8;
-  border: 1px solid transparent;
+  background-color: var(--cs-srv-bg-surface);
+  color: var(--cs-srv-text-muted);
+  border: 1px solid var(--cs-srv-border);
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
 }
 
 .cs-fleet-tag-pill:hover {
-  background-color: #334155;
-  color: #ffffff;
+  background-color: var(--cs-srv-bg-surface-hover);
+  color: var(--cs-srv-text-primary);
 }
 
 .cs-fleet-tag-pill.active {
-  background-color: rgba(6, 182, 212, 0.2);
-  color: #38bdf8;
-  border-color: rgba(6, 182, 212, 0.4);
+  background-color: rgba(6, 182, 212, 0.15);
+  color: var(--cs-srv-accent);
+  border-color: var(--cs-srv-accent);
   font-weight: 600;
 }
 
@@ -299,12 +339,13 @@ html:not(.dark),
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background-color: var(--cs-srv-bg-base);
 }
 
 /* Server Card Item */
 .cs-fleet-card {
-  background-color: rgba(30, 41, 59, 0.5);
-  border: 1px solid #334155;
+  background-color: var(--cs-srv-bg-surface);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 10px;
   padding: 10px;
   transition: all 0.15s ease-in-out;
@@ -315,17 +356,19 @@ html:not(.dark),
 }
 
 .cs-fleet-card:hover {
-  background-color: rgba(30, 41, 59, 0.9);
-  border-color: rgba(6, 182, 212, 0.4);
+  background-color: var(--cs-srv-bg-surface-hover);
+  border-color: var(--cs-srv-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .cs-fleet-card.active {
   background-color: rgba(6, 182, 212, 0.08);
-  border-color: rgba(6, 182, 212, 0.6);
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
+  border-color: var(--cs-srv-accent);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.12);
 }
 
-.cs-fleet-card-header {
+.cs-fleet-card-header,
+.cs-fleet-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -337,7 +380,17 @@ html:not(.dark),
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--cs-srv-text-primary);
+}
+
+.cs-fleet-card-name {
+  color: var(--cs-srv-text-primary);
+}
+
+.cs-fleet-card-ping {
+  font-size: 10px;
+  color: var(--cs-srv-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .cs-fleet-card-meta {
@@ -345,8 +398,15 @@ html:not(.dark),
   align-items: center;
   justify-content: space-between;
   font-size: 10.5px;
-  color: #94a3b8;
+  color: var(--cs-srv-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.cs-fleet-card-group-pill {
+  color: var(--cs-srv-accent);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
 }
 
 .cs-fleet-card-tags {
@@ -357,10 +417,29 @@ html:not(.dark),
 
 .cs-fleet-card-tag {
   font-size: 9px;
-  background-color: rgba(51, 65, 85, 0.7);
-  color: #cbd5e1;
+  background-color: var(--cs-srv-bg-subtle);
+  color: var(--cs-srv-text-secondary);
+  border: 1px solid var(--cs-srv-border);
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+.cs-fleet-edit-btn {
+  background: transparent;
+  border: none;
+  color: var(--cs-srv-text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.cs-fleet-edit-btn:hover {
+  color: var(--cs-srv-text-primary);
+  background-color: var(--cs-srv-bg-surface-hover);
 }
 
 /* --- Card Action Buttons (3 Buttons for Hybrid) --- */
@@ -370,7 +449,7 @@ html:not(.dark),
   gap: 4px;
   margin-top: 4px;
   padding-top: 6px;
-  border-top: 1px solid rgba(51, 65, 85, 0.6);
+  border-top: 1px solid var(--cs-srv-border);
 }
 
 .cs-fleet-card-actions.cols-2 {
@@ -396,33 +475,33 @@ html:not(.dark),
   user-select: none;
 }
 
-/* Button 1: ⚡ Agent */
+/* Button 1: Agent */
 .cs-fleet-btn-agent {
   background-color: rgba(6, 182, 212, 0.12);
-  color: #38bdf8;
+  color: var(--cs-srv-accent);
   border-color: rgba(6, 182, 212, 0.3);
 }
 
 .cs-fleet-btn-agent:hover {
-  background-color: rgba(6, 182, 212, 0.25);
-  color: #ffffff;
-  border-color: #06b6d4;
+  background-color: rgba(6, 182, 212, 0.22);
+  color: var(--cs-srv-text-primary);
+  border-color: var(--cs-srv-accent);
 }
 
-/* Button 2: 📁 SFTP */
+/* Button 2: SFTP */
 .cs-fleet-btn-sftp {
-  background-color: rgba(51, 65, 85, 0.6);
-  color: #e2e8f0;
-  border-color: rgba(71, 85, 105, 0.8);
+  background-color: var(--cs-srv-bg-subtle);
+  color: var(--cs-srv-text-secondary);
+  border-color: var(--cs-srv-border);
 }
 
 .cs-fleet-btn-sftp:hover {
-  background-color: rgba(71, 85, 105, 0.9);
-  color: #ffffff;
-  border-color: #94a3b8;
+  background-color: var(--cs-srv-bg-surface-hover);
+  color: var(--cs-srv-text-primary);
+  border-color: var(--cs-srv-accent);
 }
 
-/* Button 3: >_ Shell (SSH PTY) */
+/* Button 3: Shell (SSH PTY) */
 .cs-fleet-btn-shell {
   background-color: rgba(245, 158, 11, 0.12);
   color: #fbbf24;
@@ -430,46 +509,74 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-shell:hover {
-  background-color: rgba(245, 158, 11, 0.25);
-  color: #ffffff;
+  background-color: rgba(245, 158, 11, 0.22);
+  color: #f59e0b;
   border-color: #f59e0b;
 }
 
 /* Local Button */
 .cs-fleet-btn-local {
   background-color: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  color: #10b981;
   border-color: rgba(16, 185, 129, 0.3);
 }
 
 .cs-fleet-btn-local:hover {
-  background-color: rgba(16, 185, 129, 0.25);
-  color: #ffffff;
+  background-color: rgba(16, 185, 129, 0.22);
+  color: #059669;
   border-color: #10b981;
+}
+
+/* Light mode button contrast adjustments */
+html:not(.dark) .cs-fleet-btn-agent,
+.theme-light .cs-fleet-btn-agent,
+[data-theme="light"] .cs-fleet-btn-agent {
+  color: #0284c7;
+  background-color: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.25);
+}
+
+html:not(.dark) .cs-fleet-btn-shell,
+.theme-light .cs-fleet-btn-shell,
+[data-theme="light"] .cs-fleet-btn-shell {
+  color: #d97706;
+  background-color: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+html:not(.dark) .cs-fleet-btn-local,
+.theme-light .cs-fleet-btn-local,
+[data-theme="light"] .cs-fleet-btn-local {
+  color: #059669;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
 }
 
 /* Footer of Dropdown */
 .cs-fleet-dropdown-footer {
   padding: 8px 12px;
-  background-color: rgba(15, 23, 42, 0.95);
-  border-top: 1px solid #1e293b;
+  background-color: var(--cs-srv-bg-subtle);
+  border-top: 1px solid var(--cs-srv-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--cs-srv-text-muted);
 }
 
 .cs-fleet-yaml-link {
-  color: #38bdf8;
+  color: var(--cs-srv-accent);
   cursor: pointer;
   text-decoration: none;
   font-weight: 500;
   transition: color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .cs-fleet-yaml-link:hover {
-  color: #bae6fd;
+  color: var(--cs-srv-accent-hover);
   text-decoration: underline;
 }
 
@@ -477,7 +584,7 @@ html:not(.dark),
 .cs-fleet-modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: var(--cs-srv-overlay);
   backdrop-filter: blur(4px);
   z-index: 9999;
   display: flex;
@@ -488,16 +595,17 @@ html:not(.dark),
 }
 
 .cs-fleet-modal-content {
-  background-color: #0f172a;
-  border: 1px solid #334155;
+  background-color: var(--cs-srv-bg-surface);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 16px;
   width: 540px;
   max-width: 95vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+  color: var(--cs-srv-text-primary);
 }
 
 /* Эталонные размеры модальных окон дизайн-системы @config-studio/ui */
@@ -550,13 +658,13 @@ html:not(.dark),
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--cs-srv-text-primary);
 }
 
 .cs-fleet-modal-close {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: var(--cs-srv-text-muted);
   cursor: pointer;
   font-size: 18px;
   display: flex;
@@ -564,11 +672,12 @@ html:not(.dark),
   justify-content: center;
   padding: 4px;
   border-radius: 6px;
+  transition: all 0.15s;
 }
 
 .cs-fleet-modal-close:hover {
-  color: #ffffff;
-  background-color: #1e293b;
+  color: var(--cs-srv-text-primary);
+  background-color: var(--cs-srv-bg-surface-hover);
 }
 
 /* Tabs */
@@ -589,10 +698,11 @@ html:not(.dark),
   font-weight: 500;
   color: var(--cs-srv-text-muted);
   cursor: pointer;
+  transition: color 0.15s;
 }
 
 .cs-fleet-tab-btn:hover {
-  color: #ffffff;
+  color: var(--cs-srv-text-primary);
 }
 
 .cs-fleet-tab-btn.active {
@@ -608,6 +718,7 @@ html:not(.dark),
   display: flex;
   flex-direction: column;
   gap: 14px;
+  background-color: var(--cs-srv-bg-surface);
 }
 
 .cs-fleet-form-group {
@@ -619,20 +730,20 @@ html:not(.dark),
 .cs-fleet-form-label {
   font-size: 11.5px;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--cs-srv-text-secondary);
 }
 
 .cs-fleet-form-input,
 .cs-fleet-form-select,
 .cs-fleet-form-textarea {
-  background-color: #1e293b;
-  border: 1px solid #334155;
+  background-color: var(--cs-srv-bg-base);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12px;
-  color: #f8fafc;
+  color: var(--cs-srv-text-primary);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
   width: 100%;
 }
@@ -640,7 +751,8 @@ html:not(.dark),
 .cs-fleet-form-input:focus,
 .cs-fleet-form-select:focus,
 .cs-fleet-form-textarea:focus {
-  border-color: #06b6d4;
+  border-color: var(--cs-srv-accent);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
 }
 
 .cs-fleet-form-row,
@@ -652,7 +764,7 @@ html:not(.dark),
 
 .cs-fleet-form-help {
   font-size: 10.5px;
-  color: #64748b;
+  color: var(--cs-srv-text-muted);
 }
 
 /* Footer */
@@ -667,9 +779,9 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-secondary {
-  background-color: #1e293b;
-  border: 1px solid #334155;
-  color: #cbd5e1;
+  background-color: var(--cs-srv-bg-subtle);
+  border: 1px solid var(--cs-srv-border);
+  color: var(--cs-srv-text-secondary);
   padding: 8px 14px;
   border-radius: 8px;
   font-size: 12px;
@@ -679,14 +791,14 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-secondary:hover {
-  background-color: #334155;
-  color: #ffffff;
+  background-color: var(--cs-srv-bg-surface-hover);
+  color: var(--cs-srv-text-primary);
 }
 
 .cs-fleet-btn-primary {
-  background-color: #06b6d4;
-  border: 1px solid #0891b2;
-  color: #0f172a;
+  background-color: var(--cs-srv-accent);
+  border: 1px solid var(--cs-srv-accent-hover);
+  color: #ffffff;
   padding: 8px 18px;
   border-radius: 8px;
   font-size: 12px;
@@ -696,13 +808,13 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-primary:hover {
-  background-color: #22d3ee;
+  background-color: var(--cs-srv-accent-hover);
 }
 
 .cs-fleet-btn-danger {
-  background-color: rgba(239, 68, 68, 0.15);
+  background-color: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: #ef4444;
   padding: 8px 14px;
   border-radius: 8px;
   font-size: 12px;
@@ -712,8 +824,8 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-danger:hover {
-  background-color: rgba(239, 68, 68, 0.25);
-  color: #ffffff;
+  background-color: rgba(239, 68, 68, 0.22);
+  color: #dc2626;
 }
 
 /* Sidebar Split Panel View */
@@ -721,13 +833,13 @@ html:not(.dark),
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: #0f172a;
-  color: #f8fafc;
+  background-color: var(--cs-srv-bg-surface);
+  color: var(--cs-srv-text-primary);
 }
 
 .cs-fleet-sidebar-header {
   padding: 12px 14px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--cs-srv-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -744,8 +856,8 @@ html:not(.dark),
 
 /* --- 1-Click Agent Install Dialog & Terminal Log --- */
 .cs-fleet-install-box {
-  background-color: #0b1120;
-  border: 1px solid #1e293b;
+  background-color: var(--cs-srv-bg-subtle);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 10px;
   padding: 14px;
   display: flex;
@@ -754,13 +866,13 @@ html:not(.dark),
 }
 
 .cs-fleet-terminal-log {
-  background-color: #050914;
-  border: 1px solid #1e293b;
+  background-color: var(--cs-srv-bg-base);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
   padding: 10px 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  color: #a5f3fc;
+  color: var(--cs-srv-accent);
   max-height: 220px;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -768,9 +880,9 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-install {
-  background-color: rgba(6, 182, 212, 0.15);
-  border: 1px dashed rgba(6, 182, 212, 0.5);
-  color: #38bdf8;
+  background-color: rgba(6, 182, 212, 0.12);
+  border: 1px dashed rgba(6, 182, 212, 0.4);
+  color: var(--cs-srv-accent);
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 11.5px;
@@ -784,9 +896,9 @@ html:not(.dark),
 }
 
 .cs-fleet-btn-install:hover {
-  background-color: rgba(6, 182, 212, 0.25);
-  border-color: #06b6d4;
-  color: #ffffff;
+  background-color: rgba(6, 182, 212, 0.22);
+  border-color: var(--cs-srv-accent);
+  color: var(--cs-srv-text-primary);
 }
 
 /* Hide legacy redundant remote-agent switcher in header when Universal Fleet is active */
@@ -799,9 +911,9 @@ html:not(.dark),
 /* Fleet Send Modal, Folder Picker & LAN Discovery Styles                     */
 /* ========================================================================== */
 .cs-remote-folder-picker {
-  border: 1px solid #30363d;
+  border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
-  background: rgba(13, 17, 23, 0.95);
+  background: var(--cs-srv-bg-surface);
   padding: 8px;
   max-height: 180px;
   overflow-y: auto;
@@ -818,14 +930,14 @@ html:not(.dark),
   padding: 5px 8px;
   border-radius: 6px;
   font-size: 12px;
-  color: #c9d1d9;
+  color: var(--cs-srv-text-primary);
   cursor: pointer;
   transition: background 0.12s ease;
 }
 
 .cs-remote-folder-item:hover {
   background: rgba(0, 210, 180, 0.15);
-  color: #00d2b4;
+  color: var(--cs-srv-accent);
 }
 
 .cs-remote-breadcrumbs {
@@ -834,15 +946,15 @@ html:not(.dark),
   gap: 4px;
   padding-bottom: 6px;
   margin-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--cs-srv-border);
   font-size: 11px;
 }
 
 .cs-remote-crumb {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--cs-srv-bg-subtle);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #58a6ff;
+  color: var(--cs-srv-accent);
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -856,7 +968,7 @@ html:not(.dark),
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00d2b4;
+  background: var(--cs-srv-accent);
   box-shadow: 0 0 0 rgba(0, 210, 180, 0.4);
   animation: csPulse 1.5s infinite;
 }
@@ -870,8 +982,8 @@ html:not(.dark),
 .cs-discovery-drawer {
   margin-top: 8px;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid #30363d;
+  background: var(--cs-srv-bg-subtle);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 10px;
   display: flex;
   flex-direction: column;
@@ -880,8 +992,8 @@ html:not(.dark),
 
 .cs-discovered-item {
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid #30363d;
+  background: var(--cs-srv-bg-surface);
+  border: 1px solid var(--cs-srv-border);
   border-radius: 8px;
   display: flex;
   justify-content: space-between;
@@ -890,8 +1002,8 @@ html:not(.dark),
 }
 
 .cs-discovered-item:hover {
-  border-color: rgba(0, 210, 180, 0.4);
-  background: rgba(0, 210, 180, 0.03);
+  border-color: var(--cs-srv-accent);
+  background: var(--cs-srv-bg-surface-hover);
 }
 
 .cs-remote-badge {
@@ -902,24 +1014,24 @@ html:not(.dark),
   font-family: monospace;
   padding: 2px 6px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--cs-srv-bg-subtle);
+  border: 1px solid var(--cs-srv-border);
 }
 
 .cs-remote-badge.online {
-  color: #3fb950;
-  border-color: rgba(63, 185, 80, 0.3);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .cs-remote-badge.ro {
-  color: #d29922;
-  border-color: rgba(210, 153, 34, 0.3);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .cs-remote-badge.unadopted {
-  color: #58a6ff;
-  border-color: rgba(88, 166, 255, 0.4);
-  background: rgba(56, 139, 253, 0.15);
+  color: var(--cs-srv-accent);
+  border-color: var(--cs-srv-accent);
+  background: rgba(6, 182, 212, 0.12);
 }
 
 
