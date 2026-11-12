@@ -183,17 +183,18 @@
     return keyId;
   }
 
-  // --- Ensure SSH Host is registered for SFTP & Terminal ---
+  // --- Ensure SSH Host is registered in Core Host Storage for SFTP & Terminal ---
   function syncSSHHost(server) {
     if (!server.connection || !server.connection.ssh) return null;
     const sshCfg = server.connection.ssh;
     const hostObj = {
-      id: 'host-' + server.id,
-      name: server.name,
+      id: server.id,
+      name: server.name || server.id,
       host: sshCfg.host,
       port: sshCfg.port || 22,
       user: sshCfg.user || 'root',
       identityId: sshCfg.identity || '',
+      authType: sshCfg.identity ? 'vault' : 'none',
       createdAt: new Date().toISOString()
     };
 
@@ -205,23 +206,12 @@
         console.warn('[syncSSHHost error]', e);
       }
     } else {
-      const hostKey = 'cs_ssh_hosts_v1';
-      let hosts = [];
-      try {
-        hosts = JSON.parse(localStorage.getItem(hostKey) || '[]');
-      } catch (e) {}
-
-      const idx = hosts.findIndex(h => h.id === hostObj.id || (h.host === sshCfg.host && h.user === (sshCfg.user || 'root')));
-      if (idx >= 0) {
-        hosts[idx] = Object.assign(hosts[idx], hostObj);
-      } else {
-        hosts.push(hostObj);
-      }
-
-      try {
-        localStorage.setItem(hostKey, JSON.stringify(hosts));
-        localStorage.setItem('cs_ssh_last_host_id', hostObj.id);
-      } catch (e) {}
+      // Direct REST API sync to Core Host Storage
+      fetch('/api/hosts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-ConfigStudio-Web': '1' },
+        body: JSON.stringify(hostObj)
+      }).catch(err => console.warn('[syncSSHHost API error]', err));
     }
 
     return hostObj;
@@ -1608,10 +1598,15 @@
     // Load available Vault secrets for dropdowns
     let vaultSecrets = [];
     try {
-      if (window.ConfigStudio.secrets && typeof window.ConfigStudio.secrets.list === 'function') {
+      if (window.ConfigStudio?.secrets && typeof window.ConfigStudio.secrets.list === 'function') {
         vaultSecrets = await window.ConfigStudio.secrets.list();
+      } else {
+        const res = await fetch('/api/secrets', { headers: { 'X-ConfigStudio-Web': '1' } });
+        if (res.ok) vaultSecrets = await res.json();
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Fleet] Failed to load secrets from Vault:', e);
+    }
 
     const overlay = document.createElement('div');
     overlay.className = 'cs-fleet-modal-overlay';

@@ -184,7 +184,7 @@ html:not(.dark) .cs-fleet-badge.local,
 .cs-fleet-dropdown {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  right: 0;
   width: 440px;
   max-width: 95vw;
   background-color: var(--cs-srv-bg-surface);
@@ -1121,14 +1121,16 @@ html:not(.dark) .cs-fleet-btn-secondary,
     white-space: nowrap;
   }
   .cs-fleet-dropdown {
-    position: fixed;
-    top: 54px;
-    left: 8px;
-    right: 8px;
-    width: auto;
-    max-width: none;
-    max-height: calc(100vh - 64px);
-    overflow-y: auto;
+    position: fixed !important;
+    top: 54px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100vh - 64px) !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+    z-index: 9999 !important;
   }
   .cs-fleet-modal-overlay {
     padding: 0;
