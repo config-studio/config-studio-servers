@@ -184,9 +184,10 @@ html:not(.dark) .cs-fleet-badge.local,
 .cs-fleet-dropdown {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
-  width: 440px;
-  max-width: 95vw;
+  left: 0;
+  right: auto;
+  width: 420px;
+  max-width: min(420px, calc(100vw - 24px));
   background-color: var(--cs-srv-bg-surface);
   border: 1px solid var(--cs-srv-border);
   border-radius: 12px;
@@ -1100,8 +1101,8 @@ html:not(.dark) .cs-fleet-btn-secondary,
   background: rgba(6, 182, 212, 0.12);
 }
 
-/* --- Mobile Responsive Enhancements (< 640px) --- */
-@media (max-width: 640px) {
+/* --- Mobile & Tablet Responsive (< 768px) --- */
+@media (max-width: 768px) {
   .cs-fleet-header-btn {
     padding: 4px 8px;
     gap: 6px;

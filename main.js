@@ -446,21 +446,12 @@
             <span class="cs-fleet-count-pill">${servers.length} узлов</span>
           </div>
           <div style="display:flex;gap:6px;">
-            <button class="cs-fleet-add-btn" id="cs-fleet-lan-scan-btn" title="Поиск агентов в LAN">
-              ${ICONS.search} <span>LAN</span>
-            </button>
             <button class="cs-fleet-add-btn" id="cs-fleet-add-node-btn">
               ${ICONS.plus} <span>Узел</span>
             </button>
           </div>
         `;
         dropdown.appendChild(header);
-
-        header.querySelector('#cs-fleet-lan-scan-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          closeDropdown();
-          openDiscoveryModal();
-        });
 
         header.querySelector('#cs-fleet-add-node-btn').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1142,263 +1133,6 @@
     });
   }
 
-  // ==========================================================================
-  // LAN Broadcast & Subnet Discovery Engine
-  // ==========================================================================
-  function detectDefaultSubnet() {
-    for (const s of servers) {
-      const match = (s.connection?.ssh?.host || s.connection?.agent?.url || '').match(/(\d+\.\d+\.\d+)\.\d+/);
-      if (match) return match[1];
-    }
-    const hostMatch = window.location.hostname.match(/^(\d+\.\d+\.\d+)\.\d+$/);
-    if (hostMatch) return hostMatch[1];
-    return '192.168.0';
-  }
-
-  let isScanning = false;
-  async function scanSubnet(subnet = '192.168.0', onFound = null) {
-    if (isScanning) return [];
-    isScanning = true;
-    const cleanSubnet = subnet.replace(/\.$/, '');
-    const found = [];
-    const batchSize = 32;
-
-    for (let start = 1; start <= 254; start += batchSize) {
-      const end = Math.min(start + batchSize - 1, 254);
-      const batch = [];
-      for (let i = start; i <= end; i++) {
-        const ip = `${cleanSubnet}.${i}`;
-        const targetUrl = `http://${ip}:8085`;
-        batch.push(
-          fetch(`/api/remote-proxy/health`, {
-            headers: {
-              'X-ConfigStudio-Web': '1',
-              'X-Remote-Target': targetUrl
-            },
-            signal: AbortSignal.timeout(750)
-          })
-          .then(async (res) => {
-            if (res.ok) {
-              const data = await res.json().catch(() => null);
-              if (data && data.status === 'ok') {
-                const item = {
-                  ip,
-                  url: targetUrl,
-                  hostname: data.hostname || ip,
-                  version: data.version,
-                  uptime: data.uptime,
-                  adopted: data.adopted === undefined ? true : !!data.adopted
-                };
-                found.push(item);
-                if (typeof onFound === 'function') onFound(item);
-              }
-            }
-          })
-          .catch(() => {})
-        );
-      }
-      await Promise.allSettled(batch);
-    }
-
-    isScanning = false;
-    return found;
-  }
-
-  async function adoptDiscoveredAgent(agent) {
-    showToast(`Сопряжение с узлом ${agent.hostname}...`, 'info');
-    try {
-      const res = await fetch(`/api/remote-proxy/api/adopt`, {
-        method: 'POST',
-        headers: {
-          'X-ConfigStudio-Web': '1',
-          'X-Remote-Target': agent.url,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        let errMsg = `HTTP ${res.status}`;
-        try {
-          const parsed = JSON.parse(errText);
-          if (parsed.error) errMsg = parsed.error;
-        } catch (_) {
-          if (errText) errMsg = errText;
-        }
-        throw new Error(errMsg);
-      }
-
-      const data = await res.json();
-      if (!data.keyId || !data.secret) {
-        throw new Error('Узел не предоставил учетные данные');
-      }
-
-      const srvId = 'agent-' + agent.ip.replace(/\./g, '-');
-      const vaultSecretId = `agent:${srvId}`;
-
-      // 1. Save credentials to Core Vault
-      if (window.ConfigStudio?.secrets?.set) {
-        await window.ConfigStudio.secrets.set({
-          id: vaultSecretId,
-          title: `Remote Agent: ${data.hostname || agent.hostname || agent.ip}`,
-          type: 'token',
-          scope: 'shared',
-          pluginId: pluginId,
-          value: JSON.stringify({ keyId: data.keyId, secret: data.secret })
-        });
-      }
-
-      // 2. Add node to servers.yaml
-      const newNode = {
-        id: srvId,
-        name: data.hostname || agent.hostname || agent.ip,
-        group: 'discovered',
-        tags: ['agent', 'lan'],
-        connection: {
-          agent: {
-            enabled: true,
-            url: agent.url,
-            vaultSecret: vaultSecretId,
-            tlsVerify: false
-          }
-        },
-        rollout: { canary: false, order: 10 }
-      };
-
-      await apiFetch('/api/servers', {
-        method: 'POST',
-        body: JSON.stringify(newNode)
-      });
-
-      showToast(`Узел ${newNode.name} успешно принят во флот!`, 'success');
-      await loadServers();
-      return true;
-    } catch (e) {
-      showToast(`Ошибка сопряжения: ${e.message}`, 'error');
-      return false;
-    }
-  }
-
-  function openDiscoveryModal() {
-    const overlay = document.createElement('div');
-    overlay.className = 'cs-fleet-modal-overlay';
-
-    const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-modal-md';
-
-    const defaultSubnet = detectDefaultSubnet();
-
-    modal.innerHTML = `
-      <div class="cs-fleet-modal-header">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span>${ICONS.search}</span>
-          <span style="font-weight:700;font-size:14px;">Автообнаружение агентов в локальной сети</span>
-        </div>
-        <button class="cs-fleet-modal-close">${ICONS.close}</button>
-      </div>
-
-      <div class="cs-fleet-modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
-        <p style="font-size:12px;color:var(--cs-srv-text-muted);margin:0;">
-          Параллельное сканирование локальной подсети для обнаружения запущенных демонов config-studio-agent (порт :8085).
-        </p>
-
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="text" class="cs-fleet-form-input" id="cs-lan-subnet" value="${escapeHtml(defaultSubnet)}" placeholder="192.168.0" style="flex:1;" />
-          <button class="cs-fleet-btn-primary" id="cs-lan-scan-btn" type="button" style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
-            ${ICONS.search} <span>Сканировать LAN</span>
-          </button>
-        </div>
-
-        <div id="cs-lan-progress" style="display:none;align-items:center;gap:8px;font-size:12px;color:var(--cs-srv-accent);">
-          <span class="cs-scan-pulse"></span>
-          <span id="cs-lan-progress-text">Сканирование подсети...</span>
-        </div>
-
-        <div class="cs-discovery-drawer" id="cs-lan-results" style="max-height:260px;overflow-y:auto;">
-          <div style="text-align:center;color:var(--cs-srv-text-muted);font-size:11.5px;padding:12px;">Нажмите «Сканировать LAN» для запуска поиска</div>
-        </div>
-      </div>
-
-      <div class="cs-fleet-modal-footer">
-        <div></div>
-        <button class="cs-fleet-btn-secondary cs-fleet-modal-close">Закрыть</button>
-      </div>
-    `;
-
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    const closeModal = () => overlay.remove();
-    modal.querySelectorAll('.cs-fleet-modal-close').forEach(b => b.addEventListener('click', closeModal));
-
-    const scanBtn = modal.querySelector('#cs-lan-scan-btn');
-    const subnetInput = modal.querySelector('#cs-lan-subnet');
-    const progressEl = modal.querySelector('#cs-lan-progress');
-    const progressText = modal.querySelector('#cs-lan-progress-text');
-    const resultsContainer = modal.querySelector('#cs-lan-results');
-
-    async function triggerScan() {
-      const subnet = subnetInput.value.trim() || '192.168.0';
-      scanBtn.disabled = true;
-      scanBtn.innerHTML = `<span>Поиск...</span>`;
-      progressEl.style.display = 'flex';
-      progressText.textContent = `Сканирование ${subnet}.1..254...`;
-      resultsContainer.innerHTML = '';
-
-      let foundCount = 0;
-
-      await scanSubnet(subnet, (agent) => {
-        foundCount++;
-        const alreadyInFleet = servers.some(s => s.connection?.agent?.url === agent.url || s.connection?.ssh?.host === agent.ip);
-        const itemEl = document.createElement('div');
-        itemEl.className = 'cs-discovered-item';
-        itemEl.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:2px;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-weight:700;color:#e6edf3;font-size:12px;">${escapeHtml(agent.hostname)}</span>
-              <span class="cs-remote-badge ${alreadyInFleet ? 'online' : 'unadopted'}">
-                ${alreadyInFleet ? 'Во флоте' : 'Доступен'}
-              </span>
-            </div>
-            <div style="font-family:monospace;font-size:11px;color:#8b949e;">${escapeHtml(agent.ip)}:8085 • v${escapeHtml(agent.version || '1.0')}</div>
-          </div>
-          <div>
-            ${alreadyInFleet
-              ? `<span style="font-size:11px;color:#10b981;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${ICONS.check} <span>Подключен</span></span>`
-              : `<button class="cs-fleet-btn-primary cs-adopt-btn" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">${ICONS.plus} <span>Принять (Adopt)</span></button>`
-            }
-          </div>
-        `;
-
-        if (!alreadyInFleet) {
-          const btn = itemEl.querySelector('.cs-adopt-btn');
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            btn.innerHTML = `<span>Сопряжение...</span>`;
-            const ok = await adoptDiscoveredAgent(agent);
-            if (ok) {
-              btn.replaceWith(document.createRange().createContextualFragment(`<span style="font-size:11px;color:#10b981;font-weight:600;display:inline-flex;align-items:center;gap:4px;">${ICONS.check} <span>Принят во флот!</span></span>`));
-            } else {
-              btn.disabled = false;
-              btn.innerHTML = `<span>Повторить</span>`;
-            }
-          });
-        }
-
-        resultsContainer.appendChild(itemEl);
-      });
-
-      progressEl.style.display = 'none';
-      scanBtn.disabled = false;
-      scanBtn.innerHTML = `${ICONS.search} <span>Сканировать LAN</span>`;
-
-      if (foundCount === 0) {
-        resultsContainer.innerHTML = `<div style="text-align:center;color:var(--cs-srv-text-muted);padding:16px;font-size:12px;">Узлы config-studio-agent не обнаружены в подсети ${escapeHtml(subnet)}.*</div>`;
-      }
-    }
-
-    scanBtn.addEventListener('click', triggerScan);
-  }
 
   // ==========================================================================
   // Scoped Monitoring Tokens Dialog
@@ -2314,16 +2048,11 @@
             <div class="cs-fleet-sidebar-header">
               <span style="font-weight:700;font-size:12px;">Узлы инвентаря</span>
               <div style="display:flex;gap:6px;">
-                <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-lan-btn" title="Поиск агентов в LAN">${ICONS.search} <span>LAN</span></button>
                 <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-add-btn">${ICONS.plus} <span>Добавить</span></button>
               </div>
             </div>
             <div class="cs-fleet-sidebar-body" id="cs-fleet-sidebar-list"></div>
           `;
-
-          panel.querySelector('#cs-fleet-sidebar-lan-btn').addEventListener('click', () => {
-            openDiscoveryModal();
-          });
 
           panel.querySelector('#cs-fleet-sidebar-add-btn').addEventListener('click', () => {
             openEditModal(null);
