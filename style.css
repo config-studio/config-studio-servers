@@ -511,6 +511,10 @@ html:not(.dark) .cs-fleet-pill-badge,
   grid-template-columns: repeat(2, 1fr);
 }
 
+.cs-fleet-card-actions.cols-4 {
+  grid-template-columns: 1fr 1fr 1fr 28px;
+}
+
 .cs-fleet-card-actions.cols-1 {
   grid-template-columns: 1fr;
 }
@@ -573,6 +577,22 @@ html:not(.dark) .cs-fleet-btn-sftp,
   background-color: rgba(245, 158, 11, 0.22);
   color: #f59e0b;
   border-color: #f59e0b;
+}
+
+/* Button 4: 1-Click Upgrade Agent */
+.cs-fleet-btn-upgrade {
+  background-color: rgba(6, 182, 212, 0.12);
+  color: #38bdf8;
+  border-color: rgba(6, 182, 212, 0.3);
+  padding: 0 6px !important;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.cs-fleet-btn-upgrade:hover {
+  background-color: rgba(6, 182, 212, 0.22);
+  color: #0ea5e9;
+  border-color: #0ea5e9;
 }
 
 /* Local Button */
@@ -826,6 +846,35 @@ html:not(.dark) .cs-fleet-btn-local,
 .cs-fleet-form-help {
   font-size: 10.5px;
   color: var(--cs-srv-text-muted);
+}
+
+.cs-fleet-core-host-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--cs-srv-border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--cs-srv-text-primary);
+  margin-top: 4px;
+}
+
+.cs-fleet-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cs-srv-text-secondary);
+  user-select: none;
+}
+
+.cs-fleet-collapsible-header:hover {
+  color: var(--cs-srv-text-primary);
 }
 
 /* Footer */

@@ -695,8 +695,8 @@
         if (onActionClose) onActionClose();
       });
     } else if (hasAgent && hasSSH) {
-      // 3 BUTTONS HYBRID (Agent, SFTP, Shell)
-      actionsRow.className = 'cs-fleet-card-actions';
+      // 4 BUTTONS HYBRID (Agent, SFTP, Shell, 1-Click Upgrade)
+      actionsRow.className = 'cs-fleet-card-actions cols-4';
       actionsRow.innerHTML = `
         <button class="cs-fleet-btn-action cs-fleet-btn-agent" title="Файлы через Remote Agent (быстрый REST API с TOTP)">
           ${ICONS.agent} <span>Агент</span>
@@ -706,6 +706,9 @@
         </button>
         <button class="cs-fleet-btn-action cs-fleet-btn-shell" title="Открыть SSH PTY терминал к узлу">
           ${ICONS.shell} <span>Шелл</span>
+        </button>
+        <button class="cs-fleet-btn-action cs-fleet-btn-upgrade" title="1-Click Обновить Remote Agent по SSH">
+          <span>⟳</span>
         </button>
       `;
 
@@ -725,6 +728,12 @@
         e.stopPropagation();
         launchShell(s);
         if (onActionClose) onActionClose();
+      });
+
+      actionsRow.querySelector('.cs-fleet-btn-upgrade').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (onActionClose) onActionClose();
+        openInstallAgentDialog(s, true);
       });
     } else if (hasSSH && !hasAgent) {
       // SSH ONLY: SFTP + Shell + Onboarding CTA
@@ -1310,6 +1319,9 @@
   // ==========================================================================
   // Modal Dialog for Add / Edit Server
   // ==========================================================================
+  // ==========================================================================
+  // Modal Dialog for Add / Edit Server (PLUGIN-004: Compact Single-Step Form)
+  // ==========================================================================
   async function openEditModal(server) {
     const isNew = !server;
     const srv = isNew ? {
@@ -1317,19 +1329,30 @@
       name: '',
       group: 'default',
       tags: [],
+      sshHostRef: '',
       connection: {
-        ssh: { enabled: true, port: 22, user: 'root' },
         agent: { enabled: false, port: 8085 }
       },
       rollout: { canary: false, order: 10 }
     } : JSON.parse(JSON.stringify(server));
 
     srv.connection = srv.connection || {};
-    srv.connection.ssh = srv.connection.ssh || { enabled: false, port: 22, user: 'root' };
     srv.connection.agent = srv.connection.agent || { enabled: false, port: 8085 };
     srv.rollout = srv.rollout || { canary: false, order: 10 };
 
-    // Load available Vault secrets for dropdowns
+    // 1. Load Core Hosts from /api/hosts
+    let coreHosts = [];
+    try {
+      const res = await fetch('/api/hosts', { headers: { 'X-ConfigStudio-Web': '1' } });
+      if (res.ok) {
+        const data = await res.json();
+        coreHosts = data.hosts || [];
+      }
+    } catch (e) {
+      console.warn('[Fleet] Failed to load core hosts:', e);
+    }
+
+    // 2. Load available Vault secrets for dropdowns
     let vaultSecrets = [];
     try {
       if (window.ConfigStudio?.secrets && typeof window.ConfigStudio.secrets.list === 'function') {
@@ -1346,28 +1369,110 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-modal-lg cs-fleet-modal-fixed';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-sm';
 
-    let activeTab = 'general';
     let activeDropdownControllers = [];
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
         <div style="display:flex;align-items:center;gap:8px;">
           ${ICONS.server}
-          <span style="font-weight:700;font-size:14px;">${isNew ? 'Добавить узел во флот' : `Настройка узла: ${escapeHtml(srv.name)}`}</span>
+          <span style="font-weight:700;font-size:14px;">${isNew ? 'Добавить узел во флот' : `Настройка узла: ${escapeHtml(srv.name || srv.id)}`}</span>
         </div>
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
 
-      <div class="cs-fleet-tabs-nav">
-        <button class="cs-fleet-tab-btn active" data-tab="general">1. Основные</button>
-        <button class="cs-fleet-tab-btn" data-tab="ssh">2. Подключение SSH</button>
-        <button class="cs-fleet-tab-btn" data-tab="agent">3. Remote Agent</button>
-        <button class="cs-fleet-tab-btn" data-tab="rollout">4. Развертывание</button>
-      </div>
+      <div class="cs-fleet-modal-body" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <div id="cs-fleet-validation-error"></div>
 
-      <div class="cs-fleet-modal-body" id="cs-fleet-tab-content"></div>
+        ${isNew ? `
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">SSH-хост из базы ядра *</label>
+            <div id="srv-host-picker-container"></div>
+            <div id="srv-host-preview" style="display:none;"></div>
+          </div>
+        ` : `
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Привязка к хосту ядра</label>
+            ${srv.sshHostRef ? `
+              <div class="cs-fleet-core-host-pill">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span>🖥️</span>
+                  <span style="font-weight:600;">${escapeHtml(srv.sshHostRef)}</span>
+                  <span style="color:var(--cs-srv-text-muted);font-size:11px;">(${escapeHtml(srv.host || srv.connection?.ssh?.host || '')}:${srv.port || srv.connection?.ssh?.port || 22})</span>
+                </div>
+                <span class="cs-fleet-badge hybrid" style="font-size:9px;">ЯДРО</span>
+              </div>
+            ` : `
+              <div id="srv-host-picker-container"></div>
+              <div id="srv-host-preview" style="display:none;"></div>
+            `}
+          </div>
+        `}
+
+        <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">ID узла *</label>
+            <input type="text" class="cs-fleet-form-input" id="srv-id" value="${escapeHtml(srv.id || '')}" ${!isNew ? 'disabled' : ''} placeholder="alpine-01" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">Имя узла</label>
+            <input type="text" class="cs-fleet-form-input" id="srv-name" value="${escapeHtml(srv.name || '')}" placeholder="Production VPS" />
+          </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px;">
+          <div class="cs-fleet-checkbox-row" style="margin-bottom:0;">
+            <input type="checkbox" id="srv-agent-enabled" ${srv.connection?.agent?.enabled ? 'checked' : ''} />
+            <label for="srv-agent-enabled" style="font-weight:600;font-size:12px;cursor:pointer;">Подключить Remote Agent</label>
+          </div>
+          <div id="srv-agent-details" style="${srv.connection?.agent?.enabled ? 'display:flex;' : 'display:none;'}margin-top:10px;flex-direction:column;gap:10px;">
+            <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="cs-fleet-form-group">
+                <label class="cs-fleet-form-label">Порт агента</label>
+                <input type="number" class="cs-fleet-form-input" id="srv-agent-port" value="${srv.connection?.agent?.port || 8085}" />
+              </div>
+              <div class="cs-fleet-form-group">
+                <label class="cs-fleet-form-label">Секрет Vault (TOTP)</label>
+                <div id="srv-agent-secret-container"></div>
+              </div>
+            </div>
+            <div class="cs-fleet-form-help" id="srv-agent-url-hint" style="color:#38bdf8;">
+              Динамический URL: http://{host}:${srv.connection?.agent?.port || 8085}
+            </div>
+            ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
+              <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+                <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:6px;">
+                  ${ICONS.agent} <span>1-Click Установить агент</span>
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <div>
+          <div class="cs-fleet-collapsible-header" id="srv-extra-toggle">
+            <span>Дополнительные параметры (группа, теги)</span>
+            <span id="srv-extra-arrow">▾</span>
+          </div>
+          <div id="srv-extra-content" style="display:none;margin-top:8px;flex-direction:column;gap:10px;">
+            <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="cs-fleet-form-group">
+                <label class="cs-fleet-form-label">Группа / Окружение</label>
+                <input type="text" class="cs-fleet-form-input" id="srv-group" value="${escapeHtml(srv.group || 'default')}" placeholder="production" />
+              </div>
+              <div class="cs-fleet-form-group">
+                <label class="cs-fleet-form-label">Теги (через запятую)</label>
+                <input type="text" class="cs-fleet-form-input" id="srv-tags" value="${escapeHtml((srv.tags || []).join(', '))}" placeholder="linux, web" />
+              </div>
+            </div>
+            <div class="cs-fleet-checkbox-row">
+              <input type="checkbox" id="srv-rollout-canary" ${srv.rollout?.canary ? 'checked' : ''} />
+              <label for="srv-rollout-canary" style="font-size:11px;cursor:pointer;">Канареечный узел (Canary: первым получает конфиги)</label>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="cs-fleet-modal-footer">
         <div>
@@ -1375,313 +1480,186 @@
         </div>
         <div style="display:flex;gap:8px;">
           <button class="cs-fleet-btn-secondary" id="cs-fleet-cancel-btn">Отмена</button>
-          <button class="cs-fleet-btn-primary" id="cs-fleet-save-btn">Сохранить</button>
+          <button class="cs-fleet-btn-primary" id="cs-fleet-save-btn">${isNew ? 'Добавить узел' : 'Сохранить'}</button>
         </div>
       </div>
     `;
 
-    function renderTab() {
-      activeDropdownControllers.forEach(c => { try { c.destroy(); } catch (_) {} });
-      activeDropdownControllers = [];
+    // Setup Host Picker if container exists
+    const hostPickerContainer = modal.querySelector('#srv-host-picker-container');
+    const hostPreview = modal.querySelector('#srv-host-preview');
+    if (hostPickerContainer) {
+      const options = [
+        {
+          value: '',
+          label: '-- Выберите хост из базы ядра --',
+          subtitle: 'Единый источник правды (/api/hosts)',
+          badge: 'CORE',
+          badgeColor: 'default',
+        },
+        ...coreHosts.map(h => ({
+          value: h.id,
+          label: h.name || h.id,
+          subtitle: `${h.user}@${h.host}:${h.port || 22}`,
+          badge: (h.group || 'SSH').toUpperCase(),
+          badgeColor: 'blue',
+          statusDot: 'online'
+        })),
+        {
+          value: '__manual__',
+          label: '(Ввести вручную без привязки)',
+          subtitle: 'Кастомный узел',
+          badge: 'MANUAL',
+          badgeColor: 'default',
+        }
+      ];
 
-      const body = modal.querySelector('#cs-fleet-tab-content');
-      modal.querySelectorAll('.cs-fleet-tab-btn').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-tab') === activeTab);
-      });
+      const onHostChange = (val) => {
+        if (!val || val === '__manual__') {
+          if (hostPreview) hostPreview.style.display = 'none';
+          srv.sshHostRef = '';
+          return;
+        }
+        const selected = coreHosts.find(h => h.id === val);
+        if (selected) {
+          srv.sshHostRef = selected.id;
+          if (isNew) {
+            const idInput = modal.querySelector('#srv-id');
+            const nameInput = modal.querySelector('#srv-name');
+            const groupInput = modal.querySelector('#srv-group');
+            const tagsInput = modal.querySelector('#srv-tags');
 
-      if (activeTab === 'general') {
-        body.innerHTML = `
-          <div id="cs-fleet-validation-error"></div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">ID узла (уникальный латинский идентификатор) *</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-id" value="${escapeHtml(srv.id || '')}" ${!isNew ? 'disabled' : ''} placeholder="prod-web-01" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Имя узла (Отображается в шапке и меню)</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-name" value="${escapeHtml(srv.name || '')}" placeholder="Production Web Server 1" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Группа / Окружение</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-group" value="${escapeHtml(srv.group || 'default')}" placeholder="production, staging, k8s" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Теги (через запятую)</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-tags" value="${escapeHtml((srv.tags || []).join(', '))}" placeholder="linux, web, edge, db" />
-          </div>
-        `;
-      } else if (activeTab === 'ssh') {
-        const ssh = srv.connection?.ssh || {};
-        const isEnabled = Boolean(ssh.enabled);
+            if (idInput && !idInput.value) idInput.value = selected.id;
+            if (nameInput && !nameInput.value) nameInput.value = selected.name || selected.id;
+            if (groupInput && (!groupInput.value || groupInput.value === 'default')) groupInput.value = selected.group || 'default';
+            if (tagsInput && !tagsInput.value && selected.tags) tagsInput.value = selected.tags.join(', ');
 
-        body.innerHTML = `
-          <div class="cs-fleet-checkbox-row">
-            <input type="checkbox" id="srv-ssh-enabled" ${isEnabled ? 'checked' : ''} />
-            <label for="srv-ssh-enabled">Включить прямое SSH / SFTP управление</label>
-          </div>
-          <div class="cs-fleet-form-grid">
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">Хост / IP адрес</label>
-              <input type="text" class="cs-fleet-form-input" id="srv-ssh-host" value="${escapeHtml(ssh.host || '')}" placeholder="192.168.1.100 или vps.example.com" />
-            </div>
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">SSH Порт</label>
-              <input type="number" class="cs-fleet-form-input" id="srv-ssh-port" value="${ssh.port || 22}" />
-            </div>
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Пользователь</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-ssh-user" value="${escapeHtml(ssh.user || 'root')}" placeholder="root или deploy" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Ключ из Core Vault</label>
-            <div id="srv-ssh-identity-container"></div>
-          </div>
-          <div class="cs-fleet-form-help">Безопасность Zero-Secret: закрытые ключи и пароли не сохраняются в YAML, а безопасно считываются из Core Vault.</div>
-        `;
-
-        const identityContainer = body.querySelector('#srv-ssh-identity-container');
-        if (identityContainer) {
-          const options = [
-            {
-              value: '',
-              label: '(Авто / Агент ОС / Без ключа)',
-              subtitle: 'Использовать системный SSH-agent или интерактивный пароль',
-              badge: 'AUTO',
-              badgeColor: 'default',
-            },
-            ...vaultSecrets.map(v => ({
-              value: v.id,
-              label: v.title ? v.title : v.id,
-              subtitle: `ID: ${v.id}`,
-              badge: (v.type || 'secret').toUpperCase(),
-              badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
-              statusDot: 'online'
-            }))
-          ];
-
-          if (window.ConfigStudio?.ui?.renderDropdown) {
-            const ctrl = window.ConfigStudio.ui.renderDropdown(identityContainer, {
-              options,
-              value: ssh.identity || '',
-              placeholder: 'Выберите ключ из Vault...',
-              searchable: options.length > 5,
-              searchPlaceholder: 'Поиск секрета / ключа...',
-              onChange: (val) => {
-                srv.connection = srv.connection || {};
-                srv.connection.ssh = srv.connection.ssh || {};
-                srv.connection.ssh.identity = val || '';
-              }
-            });
-            activeDropdownControllers.push(ctrl);
-          } else {
-            identityContainer.innerHTML = `
-              <select class="cs-fleet-form-select" id="srv-ssh-identity">
-                <option value="">(Авто / Агент ОС / Без ключа)</option>
-                ${vaultSecrets.map(v => {
-                  const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
-                  return `<option value="${escapeHtml(v.id)}" ${ssh.identity === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-                }).join('')}
-              </select>
+            srv.id = idInput ? idInput.value : selected.id;
+            srv.name = nameInput ? nameInput.value : (selected.name || selected.id);
+          }
+          if (hostPreview) {
+            hostPreview.style.display = 'block';
+            hostPreview.innerHTML = `
+              <div class="cs-fleet-core-host-pill">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span>🖥️</span>
+                  <span style="font-weight:600;">${escapeHtml(selected.user)}@${escapeHtml(selected.host)}:${selected.port || 22}</span>
+                </div>
+                <span class="cs-fleet-badge hybrid" style="font-size:9px;">ЯДРО</span>
+              </div>
             `;
           }
-        }
-      } else if (activeTab === 'agent') {
-        const agent = srv.connection?.agent || {};
-        const isEnabled = Boolean(agent.enabled);
-
-        body.innerHTML = `
-          <div class="cs-fleet-checkbox-row">
-            <input type="checkbox" id="srv-agent-enabled" ${isEnabled ? 'checked' : ''} />
-            <label for="srv-agent-enabled">Включить Remote Agent (REST API на порту :8085)</label>
-          </div>
-
-          <!-- 1-Click Install Banner -->
-          ${srv.connection?.ssh?.host ? `
-            <div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
-              <div style="display:flex;flex-direction:column;gap:2px;">
-                <span style="font-weight:700;font-size:12px;color:#38bdf8;">1-Click Remote Agent Installer</span>
-                <span style="font-size:11px;color:#94a3b8;">Автоматическая установка и запуск агента на ${escapeHtml(srv.connection.ssh.host)} по SSH</span>
-              </div>
-              <button type="button" class="cs-fleet-btn-primary" id="cs-open-installer-btn" style="padding:6px 12px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
-                ${ICONS.agent} <span>Установить агент</span>
-              </button>
-            </div>
-          ` : ''}
-
-          <div class="cs-fleet-form-grid">
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">URL Агента</label>
-              <input type="text" class="cs-fleet-form-input" id="srv-agent-url" value="${escapeHtml(agent.url || '')}" placeholder="http://192.168.1.100:8085" />
-            </div>
-            <div class="cs-fleet-form-group">
-              <label class="cs-fleet-form-label">TLS / HTTPS</label>
-              <div class="cs-fleet-checkbox-row" style="margin-top:6px;">
-                <input type="checkbox" id="srv-agent-tls" ${agent.tlsVerify ? 'checked' : ''} />
-                <label for="srv-agent-tls" style="font-size:11px;">Проверять TLS сертификат</label>
-              </div>
-            </div>
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Секрет TOTP / Master Key из Core Vault</label>
-            <div id="srv-agent-secret-container"></div>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-            <div class="cs-fleet-form-help">Агент обеспечивает быстрое чтение и запись файлов по HTTP REST API с двухфакторной TOTP верификацией.</div>
-            <button type="button" class="cs-fleet-btn-secondary" id="cs-srv-manage-tokens-btn" style="padding:4px 10px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
-              ${ICONS.key} <span>Токены мониторинга...</span>
-            </button>
-          </div>
-        `;
-
-        if (srv.connection?.ssh?.host) {
-          const instBtn = body.querySelector('#cs-open-installer-btn');
-          if (instBtn) {
-            instBtn.addEventListener('click', () => {
-              saveFormValuesToState();
-              openInstallAgentDialog(srv);
-            });
+          const urlHint = modal.querySelector('#srv-agent-url-hint');
+          const portVal = modal.querySelector('#srv-agent-port')?.value || 8085;
+          if (urlHint) {
+            urlHint.textContent = `Динамический URL: http://${selected.host}:${portVal}`;
           }
         }
+      };
 
-        const tokensBtn = body.querySelector('#cs-srv-manage-tokens-btn');
-        if (tokensBtn) {
-          tokensBtn.addEventListener('click', () => {
-            saveFormValuesToState();
-            openTokensModal(srv);
-          });
-        }
-
-        const secretContainer = body.querySelector('#srv-agent-secret-container');
-        if (secretContainer) {
-          const options = [
-            {
-              value: '',
-              label: '(Без Vault секрета / публичный)',
-              subtitle: 'Без аутентификации или используется ручной токен',
-              badge: 'NONE',
-              badgeColor: 'default',
-            },
-            ...vaultSecrets.map(v => ({
-              value: v.id,
-              label: v.title ? v.title : v.id,
-              subtitle: `ID: ${v.id}`,
-              badge: (v.type || 'secret').toUpperCase(),
-              badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
-              statusDot: 'online'
-            }))
-          ];
-
-          if (window.ConfigStudio?.ui?.renderDropdown) {
-            const ctrl = window.ConfigStudio.ui.renderDropdown(secretContainer, {
-              options,
-              value: agent.vaultSecret || '',
-              placeholder: 'Выберите секрет из Vault...',
-              searchable: options.length > 5,
-              searchPlaceholder: 'Поиск секрета...',
-              onChange: (val) => {
-                srv.connection = srv.connection || {};
-                srv.connection.agent = srv.connection.agent || {};
-                srv.connection.agent.vaultSecret = val || '';
-              }
-            });
-            activeDropdownControllers.push(ctrl);
-          } else {
-            secretContainer.innerHTML = `
-              <select class="cs-fleet-form-select" id="srv-agent-secret">
-                <option value="">(Без Vault секрета / публичный)</option>
-                ${vaultSecrets.map(v => {
-                  const label = v.title ? `${v.title} [${v.id}]` : `${v.id} (${v.type || 'secret'})`;
-                  return `<option value="${escapeHtml(v.id)}" ${agent.vaultSecret === v.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-                }).join('')}
-              </select>
-            `;
-          }
-        }
-      } else if (activeTab === 'rollout') {
-        const rollout = srv.rollout || {};
-        const hooks = rollout.hooks || {};
-
-        body.innerHTML = `
-          <div class="cs-fleet-checkbox-row">
-            <input type="checkbox" id="srv-rollout-canary" ${rollout.canary ? 'checked' : ''} />
-            <label for="srv-rollout-canary">Канареечный узел (Canary: получает обновления первым)</label>
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Порядок развертывания (Rollout Order)</label>
-            <input type="number" class="cs-fleet-form-input" id="srv-rollout-order" value="${rollout.order || 10}" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Команда Pre-Apply (перед применением конфига)</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-hook-pre" value="${escapeHtml(hooks.preApply || '')}" placeholder="nginx -t" />
-          </div>
-          <div class="cs-fleet-form-group">
-            <label class="cs-fleet-form-label">Команда Post-Apply (после сохранения)</label>
-            <input type="text" class="cs-fleet-form-input" id="srv-hook-post" value="${escapeHtml(hooks.postApply || '')}" placeholder="systemctl reload nginx" />
-          </div>
+      if (window.ConfigStudio?.ui?.renderDropdown) {
+        const ctrl = window.ConfigStudio.ui.renderDropdown(hostPickerContainer, {
+          options,
+          value: srv.sshHostRef || '',
+          placeholder: 'Выберите хост из ядра...',
+          searchable: options.length > 4,
+          searchPlaceholder: 'Поиск хоста...',
+          onChange: onHostChange
+        });
+        activeDropdownControllers.push(ctrl);
+      } else {
+        hostPickerContainer.innerHTML = `
+          <select class="cs-fleet-form-select" id="srv-host-select">
+            ${options.map(o => `<option value="${escapeHtml(o.value)}" ${srv.sshHostRef === o.value ? 'selected' : ''}>${escapeHtml(o.label)} ${o.subtitle ? `— ${escapeHtml(o.subtitle)}` : ''}</option>`).join('')}
+          </select>
         `;
+        const sel = hostPickerContainer.querySelector('#srv-host-select');
+        sel.addEventListener('change', (e) => onHostChange(e.target.value));
       }
     }
 
-    renderTab();
-
-    // Tab buttons click
-    modal.querySelectorAll('.cs-fleet-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        saveFormValuesToState();
-        activeTab = btn.getAttribute('data-tab');
-        renderTab();
+    // Toggle Agent Section
+    const agentCheckbox = modal.querySelector('#srv-agent-enabled');
+    const agentDetails = modal.querySelector('#srv-agent-details');
+    if (agentCheckbox && agentDetails) {
+      agentCheckbox.addEventListener('change', () => {
+        agentDetails.style.display = agentCheckbox.checked ? 'flex' : 'none';
       });
-    });
+    }
 
-    function saveFormValuesToState() {
-      if (activeTab === 'general') {
-        const idInput = modal.querySelector('#srv-id');
-        if (idInput && isNew) srv.id = idInput.value.trim();
-        const nameInput = modal.querySelector('#srv-name');
-        if (nameInput) srv.name = nameInput.value.trim();
-        const groupInput = modal.querySelector('#srv-group');
-        if (groupInput) srv.group = groupInput.value.trim();
-        const tagsInput = modal.querySelector('#srv-tags');
-        if (tagsInput) {
-          srv.tags = tagsInput.value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean);
-        }
-      } else if (activeTab === 'ssh') {
-        srv.connection = srv.connection || {};
-        srv.connection.ssh = srv.connection.ssh || {};
-        const enabled = modal.querySelector('#srv-ssh-enabled');
-        if (enabled) srv.connection.ssh.enabled = enabled.checked;
-        const host = modal.querySelector('#srv-ssh-host');
-        if (host) srv.connection.ssh.host = host.value.trim();
-        const port = modal.querySelector('#srv-ssh-port');
-        if (port) srv.connection.ssh.port = parseInt(port.value, 10) || 22;
-        const user = modal.querySelector('#srv-ssh-user');
-        if (user) srv.connection.ssh.user = user.value.trim() || 'root';
-        const identity = modal.querySelector('#srv-ssh-identity');
-        if (identity) srv.connection.ssh.identity = identity.value;
-      } else if (activeTab === 'agent') {
-        srv.connection = srv.connection || {};
-        srv.connection.agent = srv.connection.agent || {};
-        const enabled = modal.querySelector('#srv-agent-enabled');
-        if (enabled) srv.connection.agent.enabled = enabled.checked;
-        const url = modal.querySelector('#srv-agent-url');
-        if (url) srv.connection.agent.url = url.value.trim();
-        const tls = modal.querySelector('#srv-agent-tls');
-        if (tls) srv.connection.agent.tlsVerify = tls.checked;
-        const secret = modal.querySelector('#srv-agent-secret');
-        if (secret) srv.connection.agent.vaultSecret = secret.value;
-      } else if (activeTab === 'rollout') {
-        srv.rollout = srv.rollout || {};
-        srv.rollout.hooks = srv.rollout.hooks || {};
-        const canary = modal.querySelector('#srv-rollout-canary');
-        if (canary) srv.rollout.canary = canary.checked;
-        const order = modal.querySelector('#srv-rollout-order');
-        if (order) srv.rollout.order = parseInt(order.value, 10) || 10;
-        const pre = modal.querySelector('#srv-hook-pre');
-        if (pre) srv.rollout.hooks.preApply = pre.value.trim();
-        const post = modal.querySelector('#srv-hook-post');
-        if (post) srv.rollout.hooks.postApply = post.value.trim();
+    // Secret dropdown in Agent section
+    const secretContainer = modal.querySelector('#srv-agent-secret-container');
+    if (secretContainer) {
+      const secOptions = [
+        {
+          value: '',
+          label: '(Без Vault секрета)',
+          subtitle: 'Публичный или ручной токен',
+          badge: 'NONE',
+          badgeColor: 'default',
+        },
+        ...vaultSecrets.map(v => ({
+          value: v.id,
+          label: v.title || v.id,
+          subtitle: `ID: ${v.id}`,
+          badge: (v.type || 'secret').toUpperCase(),
+          badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
+          statusDot: 'online'
+        }))
+      ];
+
+      const agentSecret = srv.connection?.agent?.vaultSecret || srv.connection?.agent?.secretRef || '';
+      if (window.ConfigStudio?.ui?.renderDropdown) {
+        const ctrl = window.ConfigStudio.ui.renderDropdown(secretContainer, {
+          options: secOptions,
+          value: agentSecret,
+          placeholder: 'Выберите секрет из Vault...',
+          searchable: secOptions.length > 5,
+          searchPlaceholder: 'Поиск секрета...',
+          onChange: (val) => {
+            srv.connection = srv.connection || {};
+            srv.connection.agent = srv.connection.agent || {};
+            srv.connection.agent.vaultSecret = val || '';
+            srv.connection.agent.secretRef = val || '';
+          }
+        });
+        activeDropdownControllers.push(ctrl);
+      } else {
+        secretContainer.innerHTML = `
+          <select class="cs-fleet-form-select" id="srv-agent-secret">
+            ${secOptions.map(v => `<option value="${escapeHtml(v.value)}" ${agentSecret === v.value ? 'selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}
+          </select>
+        `;
+        const sel = secretContainer.querySelector('#srv-agent-secret');
+        sel.addEventListener('change', (e) => {
+          srv.connection = srv.connection || {};
+          srv.connection.agent = srv.connection.agent || {};
+          srv.connection.agent.vaultSecret = e.target.value || '';
+          srv.connection.agent.secretRef = e.target.value || '';
+        });
       }
+    }
+
+    // 1-Click Install Agent button
+    const instBtn = modal.querySelector('#cs-modal-install-agent-btn');
+    if (instBtn) {
+      instBtn.addEventListener('click', () => {
+        closeModal();
+        openInstallAgentDialog(srv);
+      });
+    }
+
+    // Collapsible toggle
+    const extraToggle = modal.querySelector('#srv-extra-toggle');
+    const extraContent = modal.querySelector('#srv-extra-content');
+    const extraArrow = modal.querySelector('#srv-extra-arrow');
+    if (extraToggle && extraContent) {
+      let isExtraOpen = false;
+      extraToggle.addEventListener('click', () => {
+        isExtraOpen = !isExtraOpen;
+        extraContent.style.display = isExtraOpen ? 'flex' : 'none';
+        if (extraArrow) extraArrow.textContent = isExtraOpen ? '▴' : '▾';
+      });
     }
 
     // Close actions
@@ -1695,29 +1673,43 @@
 
     // Save action
     modal.querySelector('#cs-fleet-save-btn').addEventListener('click', async () => {
-      saveFormValuesToState();
+      const idInput = modal.querySelector('#srv-id');
+      const nameInput = modal.querySelector('#srv-name');
+      const groupInput = modal.querySelector('#srv-group');
+      const tagsInput = modal.querySelector('#srv-tags');
+      const agentEnabled = modal.querySelector('#srv-agent-enabled')?.checked || false;
+      const agentPort = parseInt(modal.querySelector('#srv-agent-port')?.value, 10) || 8085;
+      const canaryChecked = modal.querySelector('#srv-rollout-canary')?.checked || false;
+
+      if (idInput && isNew) srv.id = idInput.value.trim();
+      if (nameInput) srv.name = nameInput.value.trim();
+      if (groupInput) srv.group = groupInput.value.trim() || 'default';
+      if (tagsInput) {
+        srv.tags = tagsInput.value.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean);
+      }
+
+      srv.connection = srv.connection || {};
+      srv.connection.agent = srv.connection.agent || {};
+      srv.connection.agent.enabled = agentEnabled;
+      srv.connection.agent.port = agentPort;
+
+      srv.rollout = srv.rollout || {};
+      srv.rollout.canary = canaryChecked;
+
       if (!srv.id) {
-        activeTab = 'general';
-        renderTab();
         const errBanner = modal.querySelector('#cs-fleet-validation-error');
         if (errBanner) {
           errBanner.innerHTML = `
-            <div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:8px;padding:10px 12px;color:#fca5a5;font-size:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+            <div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:8px;padding:10px 12px;color:#fca5a5;font-size:12px;display:flex;align-items:center;gap:8px;">
               <span>${ICONS.warning}</span>
-              <span>Пожалуйста, укажите уникальный ID узла на вкладке «1. Основные»</span>
+              <span>Пожалуйста, укажите уникальный ID узла или выберите хост из базы ядра</span>
             </div>
           `;
         }
-        showToast('Укажите ID узла на первой вкладке (1. Основные)', 'error');
-        setTimeout(() => {
-          const inp = modal.querySelector('#srv-id');
-          if (inp) {
-            inp.focus();
-            inp.style.borderColor = '#ef4444';
-          }
-        }, 50);
+        showToast('Укажите ID узла или выберите хост из ядра', 'error');
         return;
       }
+
       if (!srv.name) srv.name = srv.id;
 
       try {
@@ -1751,6 +1743,10 @@
         }
       });
     }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1880,9 +1876,9 @@
   }
 
   // ==========================================================================
-  // 1-Click Remote Agent Installer Dialog
+  // 1-Click Remote Agent Installer / Upgrader Dialog (FEAT-003)
   // ==========================================================================
-  function openInstallAgentDialog(srv) {
+  function openInstallAgentDialog(srv, isUpgrade = false) {
     const overlay = document.createElement('div');
     overlay.className = 'cs-fleet-modal-overlay';
 
@@ -1893,21 +1889,26 @@
       <div class="cs-fleet-modal-header">
         <div style="display:flex;align-items:center;gap:8px;">
           <span>${ICONS.agent}</span>
-          <span style="font-weight:700;font-size:14px;">1-Click Установка Remote Agent на ${escapeHtml(srv.name)}</span>
+          <span style="font-weight:700;font-size:14px;">${isUpgrade ? `1-Click Обновление Remote Agent на ${escapeHtml(srv.name)}` : `1-Click Установка Remote Agent на ${escapeHtml(srv.name)}`}</span>
         </div>
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
 
       <div class="cs-fleet-modal-body" style="padding:16px 20px;">
         <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px;color:var(--cs-srv-text-primary);">
-          <div><b>Целевой SSH сервер:</b> <span style="font-family:monospace;color:var(--cs-srv-accent);">${escapeHtml(srv.connection?.ssh?.user || 'root')}@${escapeHtml(srv.connection?.ssh?.host)}:${srv.connection?.ssh?.port || 22}</span></div>
-          <div style="margin-top:4px;color:var(--cs-srv-text-muted);">Config Studio автоматически подключится по SSH, определит архитектуру (Linux x86_64/arm64), скопирует бинарник по SFTP, зарегистрирует и запустит службу демона (systemd/OpenRC) и переведет узел в гибридный режим.</div>
+          ${isUpgrade ? `
+            <div><b>Режим:</b> <span style="font-family:monospace;color:var(--cs-srv-accent);">Атомарное обновление бинарника (Upgrade)</span></div>
+            <div style="margin-top:4px;color:var(--cs-srv-text-muted);">Config Studio подключится по SSH к <span style="font-family:monospace;color:var(--cs-srv-accent);">${escapeHtml(srv.connection?.ssh?.user || 'root')}@${escapeHtml(srv.connection?.ssh?.host || srv.host)}:${srv.connection?.ssh?.port || srv.port || 22}</span>, создаст резервную копию бинарника (.bak), установит новую версию, сохранит текущие ключи TOTP/Vault и перезапустит службу агента.</div>
+          ` : `
+            <div><b>Целевой SSH сервер:</b> <span style="font-family:monospace;color:var(--cs-srv-accent);">${escapeHtml(srv.connection?.ssh?.user || 'root')}@${escapeHtml(srv.connection?.ssh?.host || srv.host)}:${srv.connection?.ssh?.port || srv.port || 22}</span></div>
+            <div style="margin-top:4px;color:var(--cs-srv-text-muted);">Config Studio автоматически подключится по SSH, определит архитектуру (Linux x86_64/arm64), скопирует бинарник по SFTP, зарегистрирует и запустит службу демона (systemd/OpenRC) и переведет узел в гибридный режим.</div>
+          `}
         </div>
 
         <div class="cs-fleet-form-grid" style="margin-bottom:12px;">
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Порт агента</label>
-            <input type="number" id="cs-install-port" class="cs-fleet-form-input" value="8085" />
+            <input type="number" id="cs-install-port" class="cs-fleet-form-input" value="${srv.connection?.agent?.port || 8085}" />
           </div>
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Система инициализации</label>
@@ -1922,11 +1923,20 @@
 
         <!-- Terminal Logs Window -->
         <div id="cs-install-terminal" style="background:var(--cs-srv-bg-base);border:1px solid var(--cs-srv-border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;min-height:160px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;color:var(--cs-srv-accent);">
-          <div style="color:var(--cs-srv-text-muted);">[Готов к установке] Нажмите «Начать установку»...</div>
+          <div style="color:var(--cs-srv-text-muted);">${isUpgrade ? '[Готов к обновлению] Нажмите «Обновить агент»...' : '[Готов к установке] Нажмите «Начать установку»...'}</div>
         </div>
       </div>
 
       <div class="cs-fleet-modal-footer">
+        <div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Закрыть</button>
+          <button class="cs-fleet-btn-primary" id="cs-install-run-btn" style="display:inline-flex;align-items:center;gap:6px;">
+            ${ICONS.agent} <span>${isUpgrade ? 'Обновить агент' : 'Начать установку'}</span>
+          </button>
+        </div>
+      </div>
+    `;
         <div></div>
         <div style="display:flex;gap:8px;">
           <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Закрыть</button>
@@ -1985,8 +1995,8 @@
       const serviceType = serviceTypeDropdown ? serviceTypeDropdown.getValue() : (svcSelect ? svcSelect.value : 'auto');
 
       runBtn.disabled = true;
-      runBtn.innerHTML = `<span>⏳ Установка...</span>`;
-      termEl.innerHTML = `<div style="color:#e2e8f0;">[1/6] Запуск процесса развертывания на ${escapeHtml(srv.connection?.ssh?.host)}...</div>`;
+      runBtn.innerHTML = `<span>⏳ ${isUpgrade ? 'Обновление...' : 'Установка...'}</span>`;
+      termEl.innerHTML = `<div style="color:#e2e8f0;">[1/6] Запуск процесса ${isUpgrade ? 'обновления' : 'развертывания'} на ${escapeHtml(srv.connection?.ssh?.host || srv.host)}...</div>`;
 
       try {
         const res = await apiFetch(`/api/servers/install-agent/${encodeURIComponent(srv.id)}`, {
@@ -1994,7 +2004,8 @@
           body: JSON.stringify({
             port: customPort,
             useSudo: useSudo,
-            serviceType: serviceType
+            serviceType: serviceType,
+            upgradeOnly: isUpgrade
           })
         });
 
@@ -2008,9 +2019,9 @@
         }
 
         if (res.success) {
-          termEl.innerHTML += `<div style="color:#10b981;font-weight:700;margin-top:6px;">Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. Узел переведен в гибридный режим!</div>`;
+          termEl.innerHTML += `<div style="color:#10b981;font-weight:700;margin-top:6px;">Успешно! Демон активен на ${escapeHtml(res.agentUrl)}. ${isUpgrade ? 'Агент успешно обновлен!' : 'Узел переведен в гибридный режим!'}</div>`;
           runBtn.innerHTML = `<span>Готово</span>`;
-          showToast(`Агент успешно установлен на ${srv.name}!`, 'success');
+          showToast(isUpgrade ? `Агент на ${srv.name} успешно обновлен!` : `Агент успешно установлен на ${srv.name}!`, 'success');
           await loadServers();
           setTimeout(closeModal, 1800);
         } else {
