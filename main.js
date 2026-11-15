@@ -1748,10 +1748,6 @@
     document.body.appendChild(overlay);
   }
 
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-  }
-
   // ==========================================================================
   // Direct servers.yaml Raw Editor (Monaco Tab via Core ConfigStudio API)
   // ==========================================================================
@@ -1933,15 +1929,6 @@
           <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Закрыть</button>
           <button class="cs-fleet-btn-primary" id="cs-install-run-btn" style="display:inline-flex;align-items:center;gap:6px;">
             ${ICONS.agent} <span>${isUpgrade ? 'Обновить агент' : 'Начать установку'}</span>
-          </button>
-        </div>
-      </div>
-    `;
-        <div></div>
-        <div style="display:flex;gap:8px;">
-          <button class="cs-fleet-btn-secondary" id="cs-install-cancel-btn">Закрыть</button>
-          <button class="cs-fleet-btn-primary" id="cs-install-run-btn" style="display:inline-flex;align-items:center;gap:6px;">
-            ${ICONS.agent} <span>Начать установку</span>
           </button>
         </div>
       </div>
