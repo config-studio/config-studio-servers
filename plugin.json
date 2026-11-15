@@ -1,7 +1,7 @@
 {
   "id": "servers",
   "name": "Servers & Fleet Manager",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP, встроенный агент и отправка файлов",
   "author": "Config Studio Team",
   "icon": "server",
@@ -17,6 +17,20 @@
   "providesServices": [
     "fleet-manager"
   ],
+  "agent": {
+    "version": "2.3.0",
+    "commit": "1fe3dc3",
+    "binaries": {
+      "linux-amd64": {
+        "path": "agents/config-studio-agent-linux-amd64",
+        "sha256": "32134f049e8760c7c9bf78c57ff707ad808e6504ce6ada69e60badc5c66e32a4"
+      },
+      "linux-arm64": {
+        "path": "agents/config-studio-agent-linux-arm64",
+        "sha256": "0b0b53947e9dcdc00d6ef8dd6d55a43f8a04b4d2589c60fd8e21dbe78afa22f2"
+      }
+    }
+  },
   "locales": {
     "ru": {
       "name": "Флот серверов & Инвентарь",

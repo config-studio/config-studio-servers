@@ -3,6 +3,8 @@ dist/
 *.cspkg
 .DS_Store
 *.log
+agents/*
+!agents/.gitkeep
 
 # doubled-graph
 .doubled-graph/logs/
