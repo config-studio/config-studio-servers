@@ -149,16 +149,16 @@
       return secretId || '';
     }
 
-    let keyId = 'cs_master';
+    let keyId = 'cs_key';
     let secret = '';
 
     if (typeof secretVal === 'object') {
-      keyId = secretVal.keyId || 'cs_master';
+      keyId = secretVal.keyId || 'cs_key';
       secret = secretVal.secret || '';
     } else if (typeof secretVal === 'string') {
       try {
         const parsed = JSON.parse(secretVal);
-        keyId = parsed.keyId || 'cs_master';
+        keyId = parsed.keyId || 'cs_key';
         secret = parsed.secret || '';
       } catch (_) {
         if (secretVal.includes(':')) {
