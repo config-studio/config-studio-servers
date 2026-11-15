@@ -1,6 +1,8 @@
 name: Package & Release servers.cspkg
 
 on:
+  push:
+    tags: [ 'v*' ]
   schedule:
     - cron: '0 3 * * *' # Nightly check at 03:00 UTC
   repository_dispatch:
@@ -31,17 +33,15 @@ jobs:
           go-version: '1.24'
           check-latest: true
 
-      - name: Check for new Remote Agent release
+      - name: Check and ensure Remote Agent binaries
         id: check_agent
         run: |
-          echo "Checking latest release from ConfigStudio core..."
-          LATEST_RELEASE=$(curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/EdvardBaldanov/config-studio/releases/latest)
+          echo "Checking latest release from Config Studio core..."
+          LATEST_RELEASE=$(curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/config-studio/config-studio/releases/latest)
           TAG_NAME=$(echo "$LATEST_RELEASE" | grep -Po '"tag_name": "\K[^"]*' || echo "")
           
           if [[ -z "$TAG_NAME" ]]; then
-            echo "No releases found or rate limited. Proceeding with existing agents."
-            echo "updated=false" >> $GITHUB_OUTPUT
-            exit 0
+            TAG_NAME="v2.3.0"
           fi
           
           CLEAN_VERSION="${TAG_NAME#v}"
@@ -50,54 +50,49 @@ jobs:
           echo "Latest core tag: $TAG_NAME (version: $CLEAN_VERSION)"
           echo "Current agent in plugin: $CURRENT_VERSION"
           
-          if [[ "$CLEAN_VERSION" != "$CURRENT_VERSION" || "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
-            echo "New version detected or force rebuild requested! Updating agents..."
-            mkdir -p agents
-            
-            # Download binaries
-            curl -sSL "https://github.com/EdvardBaldanov/config-studio/releases/download/${TAG_NAME}/config-studio-agent-linux-amd64" -o agents/config-studio-agent-linux-amd64 || true
-            curl -sSL "https://github.com/EdvardBaldanov/config-studio/releases/download/${TAG_NAME}/config-studio-agent-linux-arm64" -o agents/config-studio-agent-linux-arm64 || true
+          mkdir -p agents
+          
+          # Download if missing or updated
+          if [[ "$CLEAN_VERSION" != "$CURRENT_VERSION" || "${{ github.event.inputs.force_rebuild }}" == "true" || ! -f agents/config-studio-agent-linux-amd64 || ! -f agents/config-studio-agent-linux-arm64 ]]; then
+            echo "Fetching agent binaries for $TAG_NAME..."
+            curl -sSL "https://github.com/config-studio/config-studio/releases/download/${TAG_NAME}/config-studio-agent-linux-amd64" -o agents/config-studio-agent-linux-amd64 || true
+            curl -sSL "https://github.com/config-studio/config-studio/releases/download/${TAG_NAME}/config-studio-agent-linux-arm64" -o agents/config-studio-agent-linux-arm64 || true
+            chmod +x agents/* || true
             
             if [[ -f agents/config-studio-agent-linux-amd64 && -f agents/config-studio-agent-linux-arm64 ]]; then
-              chmod +x agents/*
               AMD64_SHA=$(sha256sum agents/config-studio-agent-linux-amd64 | cut -d' ' -f1)
               ARM64_SHA=$(sha256sum agents/config-studio-agent-linux-arm64 | cut -d' ' -f1)
               
-              # Update plugin.json
               jq --arg ver "$CLEAN_VERSION" \
                  --arg amd64 "$AMD64_SHA" \
                  --arg arm64 "$ARM64_SHA" \
                  '.agent.version = $ver | .agent.binaries["linux-amd64"].sha256 = $amd64 | .agent.binaries["linux-arm64"].sha256 = $arm64' \
                  plugin.json > plugin.json.tmp && mv plugin.json.tmp plugin.json
                  
-              # Bump patch version of plugin
-              CURRENT_PLUGIN_VER=$(jq -r '.version' plugin.json)
-              IFS='.' read -r -a PARTS <<< "$CURRENT_PLUGIN_VER"
-              NEW_PATCH=$((PARTS[2] + 1))
-              NEW_PLUGIN_VER="${PARTS[0]}.${PARTS[1]}.${NEW_PATCH}"
-              
-              jq --arg pver "$NEW_PLUGIN_VER" '.version = $pver' plugin.json > plugin.json.tmp && mv plugin.json.tmp plugin.json
-              echo "Bumped plugin version: $CURRENT_PLUGIN_VER -> $NEW_PLUGIN_VER"
-              
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add plugin.json
-              git commit -m "chore(agent): update embedded remote agent to v${CLEAN_VERSION} (plugin v${NEW_PLUGIN_VER})"
-              git push
-              echo "updated=true" >> $GITHUB_OUTPUT
-              echo "plugin_version=$NEW_PLUGIN_VER" >> $GITHUB_OUTPUT
-            else
-              echo "Failed to download binaries. Skipping update."
-              echo "updated=false" >> $GITHUB_OUTPUT
+              # Bump patch version if automatically updated from cron/webhook
+              if [[ "$CLEAN_VERSION" != "$CURRENT_VERSION" && "${{ github.event_name }}" != "push" ]]; then
+                CURRENT_PLUGIN_VER=$(jq -r '.version' plugin.json)
+                IFS='.' read -r -a PARTS <<< "$CURRENT_PLUGIN_VER"
+                NEW_PATCH=$((PARTS[2] + 1))
+                NEW_PLUGIN_VER="${PARTS[0]}.${PARTS[1]}.${NEW_PATCH}"
+                
+                jq --arg pver "$NEW_PLUGIN_VER" '.version = $pver' plugin.json > plugin.json.tmp && mv plugin.json.tmp plugin.json
+                echo "Bumped plugin version: $CURRENT_PLUGIN_VER -> $NEW_PLUGIN_VER"
+                
+                git config user.name "github-actions[bot]"
+                git config user.email "github-actions[bot]@users.noreply.github.com"
+                git add plugin.json
+                git commit -m "chore(agent): update embedded remote agent to v${CLEAN_VERSION} (plugin v${NEW_PLUGIN_VER})"
+                git push
+                echo "updated=true" >> $GITHUB_OUTPUT
+                echo "plugin_version=$NEW_PLUGIN_VER" >> $GITHUB_OUTPUT
+              fi
             fi
-          else
-            echo "Agent is up to date."
-            echo "updated=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build cspkg Packaging CLI
         run: |
-          git clone --depth 1 https://github.com/EdvardBaldanov/config-studio.git /tmp/config-studio
+          git clone --depth 1 https://github.com/config-studio/config-studio.git /tmp/config-studio
           cd /tmp/config-studio
           go build -o /usr/local/bin/cspkg ./cmd/cspkg
 
@@ -110,11 +105,11 @@ jobs:
           cat servers.cspkg.sha256
 
       - name: Publish servers.cspkg Release
-        if: steps.check_agent.outputs.updated == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.check_agent.outputs.updated == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.check_agent.outputs.plugin_version || '1.4.0' }}"
-          name: "Servers & Fleet Manager v${{ steps.check_agent.outputs.plugin_version || '1.4.0' }}"
+          tag_name: ${{ github.ref_name || format('v{0}', steps.check_agent.outputs.plugin_version || '1.4.0') }}
+          name: "Servers & Fleet Manager ${{ github.ref_name || format('v{0}', steps.check_agent.outputs.plugin_version || '1.4.0') }}"
           files: |
             servers.cspkg
             servers.cspkg.sha256
