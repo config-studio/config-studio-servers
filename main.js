@@ -1590,6 +1590,15 @@
     // Secret dropdown in Agent section
     const secretContainer = modal.querySelector('#srv-agent-secret-container');
     if (secretContainer) {
+      // Sort secrets: agent_credentials first, then others
+      const sortedSecrets = [...vaultSecrets].sort((a, b) => {
+        const aIsAgent = a.type === 'agent_credentials' || (a.id && a.id.startsWith('agent:'));
+        const bIsAgent = b.type === 'agent_credentials' || (b.id && b.id.startsWith('agent:'));
+        if (aIsAgent && !bIsAgent) return -1;
+        if (!aIsAgent && bIsAgent) return 1;
+        return (a.title || a.id).localeCompare(b.title || b.id);
+      });
+
       const secOptions = [
         {
           value: '',
@@ -1598,17 +1607,20 @@
           badge: 'NONE',
           badgeColor: 'default',
         },
-        ...vaultSecrets.map(v => ({
-          value: v.id,
-          label: v.title || v.id,
-          subtitle: `ID: ${v.id}`,
-          badge: (v.type || 'secret').toUpperCase(),
-          badgeColor: v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue'),
-          statusDot: 'online'
-        }))
+        ...sortedSecrets.map(v => {
+          const isAgent = v.type === 'agent_credentials' || (v.id && v.id.startsWith('agent:'));
+          return {
+            value: v.id,
+            label: v.title || v.id,
+            subtitle: `ID: ${v.id}`,
+            badge: isAgent ? 'AGENT' : (v.type || 'secret').toUpperCase(),
+            badgeColor: isAgent ? 'cyan' : (v.type === 'token' ? 'purple' : (v.type === 'password' ? 'green' : 'blue')),
+            statusDot: 'online'
+          };
+        })
       ];
 
-      const agentSecret = srv.connection?.agent?.vaultSecret || srv.connection?.agent?.secretRef || '';
+      const agentSecret = srv.connection?.agent?.vaultSecret || srv.connection?.agent?.secretRef || (vaultSecrets.find(v => v.id === `agent:${srv.id}`) ? `agent:${srv.id}` : '');
       if (window.ConfigStudio?.ui?.renderDropdown) {
         const ctrl = window.ConfigStudio.ui.renderDropdown(secretContainer, {
           options: secOptions,
