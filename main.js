@@ -2645,12 +2645,16 @@
         }
       });
 
+      let isDone = false;
+
       eventSource.addEventListener('done', async (e) => {
+        isDone = true;
         try {
           const summary = JSON.parse(e.data);
           progressBar.style.width = '100%';
-          runBtn.innerHTML = `<span>✓ Завершено</span>`;
+          runBtn.innerHTML = `<span>✓ Закрыть</span>`;
           runBtn.disabled = false;
+          runBtn.onclick = closeModal;
           statusHint.textContent = `Готово! Успешно: ${summary.success}, Ошибок: ${summary.failed}, Пропущено: ${summary.skipped}`;
           showToast(`Массовая установка завершена! Успешно: ${summary.success}, Ошибок: ${summary.failed}`, summary.failed > 0 ? 'warning' : 'success');
         } catch (_) {
@@ -2663,15 +2667,16 @@
       });
 
       eventSource.addEventListener('error', () => {
+        if (isDone) return;
         if (eventSource) {
           eventSource.close();
           eventSource = null;
         }
         isRunning = false;
-        runBtn.innerHTML = `<span>Готово</span>`;
+        runBtn.innerHTML = `<span>Закрыть</span>`;
         runBtn.disabled = false;
+        runBtn.onclick = closeModal;
         statusHint.textContent = 'Связь с сервером завершена.';
-        showToast('Процесс массовой установки завершен', 'info');
         loadServers();
       });
     });
