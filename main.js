@@ -581,14 +581,16 @@
               ${ICONS.agent} <span>Массовая установка</span>
             </button>
           </div>
-          <span class="cs-fleet-yaml-link">servers.yaml ${ICONS.arrowRight}</span>
+          <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-raw-yaml-btn" style="background:none;border:none;cursor:pointer;color:inherit;font-size:inherit;padding:0;display:inline-flex;align-items:center;gap:4px;">
+            <span>servers.yaml</span> ${ICONS.arrowRight}
+          </button>
         `;
         footer.querySelector('#cs-fleet-dropdown-batch-btn')?.addEventListener('click', (e) => {
           e.stopPropagation();
           closeDropdown();
           openBatchInstallModal();
         });
-        footer.querySelector('.cs-fleet-yaml-link:last-child').addEventListener('click', (e) => {
+        footer.querySelector('#cs-fleet-dropdown-raw-yaml-btn')?.addEventListener('click', (e) => {
           e.stopPropagation();
           closeDropdown();
           openRawYAMLModal();
