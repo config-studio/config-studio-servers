@@ -694,7 +694,7 @@ html:not(.dark) .cs-fleet-btn-local,
 }
 
 /* Эталонные размеры модальных окон дизайн-системы @config-studio/ui */
-.cs-modal-sm, .cs-fleet-modal-sm { width: 400px; max-width: 95vw; }
+.cs-modal-sm, .cs-fleet-modal-sm { width: 480px; max-width: 95vw; }
 .cs-modal-md, .cs-fleet-modal-md { width: 540px; max-width: 95vw; }
 .cs-modal-lg, .cs-fleet-modal-lg { width: 720px; max-width: 95vw; }
 .cs-modal-xl, .cs-fleet-modal-xl { width: 900px; max-width: 95vw; }
@@ -810,6 +810,7 @@ html:not(.dark) .cs-fleet-btn-local,
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .cs-fleet-form-label {
@@ -838,6 +839,11 @@ html:not(.dark) .cs-fleet-btn-local,
 .cs-fleet-form-textarea:focus {
   border-color: var(--cs-srv-accent);
   box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+}
+
+.cs-fleet-form-input[type="number"] {
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .cs-fleet-form-row,

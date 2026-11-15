@@ -1369,7 +1369,7 @@
     overlay.className = 'cs-fleet-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'cs-fleet-modal-content cs-fleet-modal-sm';
+    modal.className = 'cs-fleet-modal-content cs-fleet-modal-md';
 
     let activeDropdownControllers = [];
 
@@ -1382,7 +1382,7 @@
         <button class="cs-fleet-modal-close">${ICONS.close}</button>
       </div>
 
-      <div class="cs-fleet-modal-body" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+      <div class="cs-fleet-modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
         <div id="cs-fleet-validation-error"></div>
 
         ${isNew ? `
@@ -1410,7 +1410,7 @@
           </div>
         `}
 
-        <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px;">
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">ID узла *</label>
             <input type="text" class="cs-fleet-form-input" id="srv-id" value="${escapeHtml(srv.id || '')}" ${!isNew ? 'disabled' : ''} placeholder="alpine-01" />
@@ -1421,32 +1421,32 @@
           </div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;">
           <div class="cs-fleet-checkbox-row" style="margin-bottom:0;">
             <input type="checkbox" id="srv-agent-enabled" ${srv.connection?.agent?.enabled ? 'checked' : ''} />
             <label for="srv-agent-enabled" style="font-weight:600;font-size:12px;cursor:pointer;">Подключить Remote Agent</label>
           </div>
-          <div id="srv-agent-details" style="${srv.connection?.agent?.enabled ? 'display:flex;' : 'display:none;'}margin-top:10px;flex-direction:column;gap:10px;">
-            <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div id="srv-agent-details" style="${srv.connection?.agent?.enabled ? 'display:flex;' : 'display:none;'}margin-top:12px;flex-direction:column;gap:12px;">
+            <div class="cs-fleet-form-grid" style="grid-template-columns: 130px minmax(0, 1fr); gap: 12px; align-items: start;">
               <div class="cs-fleet-form-group">
-                <label class="cs-fleet-form-label">Порт агента</label>
-                <input type="number" class="cs-fleet-form-input" id="srv-agent-port" value="${srv.connection?.agent?.port || 8085}" />
+                <label class="cs-fleet-form-label" style="white-space: nowrap;">Порт агента</label>
+                <input type="number" class="cs-fleet-form-input" id="srv-agent-port" min="1" max="65535" value="${srv.connection?.agent?.port || 8085}" style="min-width:0;box-sizing:border-box;font-family:monospace;" />
               </div>
-              <div class="cs-fleet-form-group">
+              <div class="cs-fleet-form-group" style="min-width:0;">
                 <label class="cs-fleet-form-label">Секрет Vault (TOTP)</label>
                 <div id="srv-agent-secret-container"></div>
               </div>
             </div>
-            <div class="cs-fleet-form-help" id="srv-agent-url-hint" style="color:#38bdf8;">
-              Динамический URL: http://{host}:${srv.connection?.agent?.port || 8085}
-            </div>
-            ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
-              <div style="display:flex;justify-content:flex-end;margin-top:4px;">
-                <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:6px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:2px;">
+              <div class="cs-fleet-form-help" id="srv-agent-url-hint" style="color:#38bdf8;margin:0;font-size:11.5px;">
+                Динамический URL: http://{host}:${srv.connection?.agent?.port || 8085}
+              </div>
+              ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
+                <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;">
                   ${ICONS.agent} <span>1-Click Установить агент</span>
                 </button>
-              </div>
-            ` : ''}
+              ` : ''}
+            </div>
           </div>
         </div>
 
@@ -1455,8 +1455,8 @@
             <span>Дополнительные параметры (группа, теги)</span>
             <span id="srv-extra-arrow">▾</span>
           </div>
-          <div id="srv-extra-content" style="display:none;margin-top:8px;flex-direction:column;gap:10px;">
-            <div class="cs-fleet-form-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div id="srv-extra-content" style="display:none;margin-top:10px;flex-direction:column;gap:12px;">
+            <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px;">
               <div class="cs-fleet-form-group">
                 <label class="cs-fleet-form-label">Группа / Окружение</label>
                 <input type="text" class="cs-fleet-form-input" id="srv-group" value="${escapeHtml(srv.group || 'default')}" placeholder="production" />
