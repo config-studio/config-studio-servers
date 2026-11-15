@@ -35,6 +35,10 @@ html:not(.dark),
   align-items: center;
 }
 
+.cs-fleet-header-container.open {
+  z-index: 100;
+}
+
 .cs-fleet-header-btn {
   display: inline-flex;
   align-items: center;
