@@ -1632,7 +1632,7 @@
             srv.connection = srv.connection || {};
             srv.connection.agent = srv.connection.agent || {};
             srv.connection.agent.vaultSecret = val || '';
-            srv.connection.agent.secretRef = val || '';
+            delete srv.connection.agent.secretRef;
           }
         });
         activeDropdownControllers.push(ctrl);
@@ -1647,7 +1647,7 @@
           srv.connection = srv.connection || {};
           srv.connection.agent = srv.connection.agent || {};
           srv.connection.agent.vaultSecret = e.target.value || '';
-          srv.connection.agent.secretRef = e.target.value || '';
+          delete srv.connection.agent.secretRef;
         });
       }
     }
