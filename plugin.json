@@ -1,8 +1,8 @@
 {
   "id": "servers",
   "name": "Servers & Fleet Manager",
-  "version": "1.4.0",
-  "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP, встроенный агент и отправка файлов",
+  "version": "1.5.0",
+  "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP, массовая параллельная установка агентов и отправка файлов",
   "author": "Config Studio Team",
   "icon": "server",
   "entry": "main.js",
