@@ -2654,7 +2654,8 @@
         try {
           const summary = JSON.parse(e.data);
           progressBar.style.width = '100%';
-          runBtn.innerHTML = `<span>✓ Закрыть</span>`;
+          closeBtn.style.display = 'none';
+          runBtn.innerHTML = `<span>✓ Готово</span>`;
           runBtn.disabled = false;
           runBtn.onclick = closeModal;
           statusHint.textContent = `Готово! Успешно: ${summary.success}, Ошибок: ${summary.failed}, Пропущено: ${summary.skipped}`;
@@ -2675,6 +2676,7 @@
           eventSource = null;
         }
         isRunning = false;
+        closeBtn.style.display = 'none';
         runBtn.innerHTML = `<span>Закрыть</span>`;
         runBtn.disabled = false;
         runBtn.onclick = closeModal;
