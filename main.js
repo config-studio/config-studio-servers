@@ -1346,26 +1346,57 @@
     srv.connection.agent = srv.connection.agent || { enabled: false, port: 8085 };
     srv.rollout = srv.rollout || { canary: false, order: 10 };
 
-    // 1. Load Core Hosts from /api/hosts
+    // 1. Load Core Hosts from window.ConfigStudio.ssh or /api/hosts
     let coreHosts = [];
-    try {
-      const res = await fetch('/api/hosts', { headers: { 'X-ConfigStudio-Web': '1' } });
-      if (res.ok) {
-        const data = await res.json();
-        coreHosts = data.hosts || [];
+    if (window.ConfigStudio?.ssh && typeof window.ConfigStudio.ssh.fetchFromServer === 'function') {
+      try {
+        const list = await window.ConfigStudio.ssh.fetchFromServer();
+        if (Array.isArray(list) && list.length > 0) {
+          coreHosts = list;
+        }
+      } catch (e) {
+        console.warn('[Fleet] Failed to load hosts via ssh service:', e);
       }
-    } catch (e) {
-      console.warn('[Fleet] Failed to load core hosts:', e);
+    }
+    if (coreHosts.length === 0 && window.ConfigStudio?.ssh && typeof window.ConfigStudio.ssh.list === 'function') {
+      const list = window.ConfigStudio.ssh.list();
+      if (Array.isArray(list) && list.length > 0) {
+        coreHosts = list;
+      }
+    }
+    if (coreHosts.length === 0) {
+      try {
+        const res = await fetch('/api/hosts', { headers: { 'X-ConfigStudio-Web': '1' } });
+        if (res.ok) {
+          const data = await res.json();
+          coreHosts = Array.isArray(data) ? data : (data.hosts || []);
+        }
+      } catch (e) {
+        console.warn('[Fleet] Failed to load core hosts via fetch:', e);
+      }
+    }
+
+    // Auto-link existing server if it matches a core host by host/id
+    if (!srv.sshHostRef) {
+      const targetHost = srv.host || srv.connection?.ssh?.host;
+      if (targetHost) {
+        const found = coreHosts.find(h => (h.host === targetHost || h.address === targetHost || h.id === srv.id));
+        if (found) srv.sshHostRef = found.id;
+      }
     }
 
     // 2. Load available Vault secrets for dropdowns
     let vaultSecrets = [];
     try {
       if (window.ConfigStudio?.secrets && typeof window.ConfigStudio.secrets.list === 'function') {
-        vaultSecrets = await window.ConfigStudio.secrets.list();
+        const list = await window.ConfigStudio.secrets.list();
+        vaultSecrets = Array.isArray(list) ? list : [];
       } else {
         const res = await fetch('/api/secrets', { headers: { 'X-ConfigStudio-Web': '1' } });
-        if (res.ok) vaultSecrets = await res.json();
+        if (res.ok) {
+          const data = await res.json();
+          vaultSecrets = Array.isArray(data) ? data : (data.secrets || []);
+        }
       }
     } catch (e) {
       console.warn('[Fleet] Failed to load secrets from Vault:', e);
@@ -1395,26 +1426,60 @@
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">SSH-хост из базы ядра *</label>
             <div id="srv-host-picker-container"></div>
-            <div id="srv-host-preview" style="display:none;"></div>
+            <div id="srv-host-preview" style="display:none;margin-top:8px;"></div>
           </div>
         ` : `
           <div class="cs-fleet-form-group">
             <label class="cs-fleet-form-label">Привязка к хосту ядра</label>
             ${srv.sshHostRef ? `
-              <div class="cs-fleet-core-host-pill">
+              <div class="cs-fleet-core-host-pill" style="display:flex;align-items:center;justify-content:space-between;">
                 <div style="display:flex;align-items:center;gap:6px;">
                   <span>🖥️</span>
                   <span style="font-weight:600;">${escapeHtml(srv.sshHostRef)}</span>
                   <span style="color:var(--cs-srv-text-muted);font-size:11px;">(${escapeHtml(srv.host || srv.connection?.ssh?.host || '')}:${srv.port || srv.connection?.ssh?.port || 22})</span>
                 </div>
-                <span class="cs-fleet-badge hybrid" style="font-size:9px;">ЯДРО</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="cs-fleet-badge hybrid" style="font-size:9px;">ЯДРО</span>
+                  <button type="button" class="cs-fleet-btn-secondary" id="srv-rebind-host-btn" style="padding:2px 8px;font-size:10px;">Сменить</button>
+                </div>
               </div>
+              <div id="srv-host-picker-container" style="display:none;margin-top:8px;"></div>
+              <div id="srv-host-preview" style="display:none;margin-top:8px;"></div>
             ` : `
               <div id="srv-host-picker-container"></div>
-              <div id="srv-host-preview" style="display:none;"></div>
+              <div id="srv-host-preview" style="display:none;margin-top:8px;"></div>
             `}
           </div>
         `}
+
+        <div id="srv-manual-ssh-container" style="display:none;background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:8px;padding:12px;">
+          <div style="font-size:11.5px;font-weight:600;margin-bottom:10px;color:var(--cs-srv-text-primary);display:flex;align-items:center;gap:6px;">
+            <span>🔑</span>
+            <span>Параметры прямого подключения SSH</span>
+          </div>
+          <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 2fr) 90px minmax(0, 1fr); gap: 10px;">
+            <div class="cs-fleet-form-group">
+              <label class="cs-fleet-form-label">Хост / IP *</label>
+              <input type="text" class="cs-fleet-form-input" id="srv-manual-host" value="${escapeHtml(srv.host || srv.connection?.ssh?.host || '')}" placeholder="192.168.1.100" />
+            </div>
+            <div class="cs-fleet-form-group">
+              <label class="cs-fleet-form-label">Порт</label>
+              <input type="number" class="cs-fleet-form-input" id="srv-manual-port" value="${srv.port || srv.connection?.ssh?.port || 22}" placeholder="22" />
+            </div>
+            <div class="cs-fleet-form-group">
+              <label class="cs-fleet-form-label">Пользователь</label>
+              <input type="text" class="cs-fleet-form-input" id="srv-manual-user" value="${escapeHtml(srv.user || srv.connection?.ssh?.user || 'root')}" placeholder="root" />
+            </div>
+          </div>
+          <div class="cs-fleet-form-group" style="margin-top:10px;">
+            <label class="cs-fleet-form-label">SSH-ключ из Vault</label>
+            <div id="srv-manual-secret-container"></div>
+          </div>
+          <div class="cs-fleet-checkbox-row" style="margin-top:8px;margin-bottom:0;">
+            <input type="checkbox" id="srv-manual-save-core" checked />
+            <label for="srv-manual-save-core" style="font-size:11px;cursor:pointer;">Сохранить этот хост в общую базу SSH ядра (/api/hosts)</label>
+          </div>
+        </div>
 
         <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px;">
           <div class="cs-fleet-form-group">
@@ -1491,65 +1556,132 @@
       </div>
     `;
 
-    // Setup Host Picker if container exists
+    // Setup Host Picker and Manual SSH Container
     const hostPickerContainer = modal.querySelector('#srv-host-picker-container');
     const hostPreview = modal.querySelector('#srv-host-preview');
+    const manualContainer = modal.querySelector('#srv-manual-ssh-container');
+    const rebindBtn = modal.querySelector('#srv-rebind-host-btn');
+
+    if (rebindBtn && hostPickerContainer) {
+      rebindBtn.addEventListener('click', () => {
+        const pill = rebindBtn.closest('.cs-fleet-core-host-pill');
+        if (pill) pill.style.display = 'none';
+        hostPickerContainer.style.display = 'block';
+      });
+    }
+
+    let manualSecretVal = srv.identity || srv.connection?.ssh?.identity || '';
+    const manualSecretContainer = modal.querySelector('#srv-manual-secret-container');
+    if (manualSecretContainer) {
+      const sshSecretOptions = [
+        { value: '', label: '-- Без ключа (пароль / агент) --', badge: 'AUTH', badgeColor: 'default' },
+        ...vaultSecrets.map(s => ({
+          value: s.id,
+          label: s.title || s.id,
+          subtitle: s.type || 'secret',
+          badge: (s.type || 'VAULT').toUpperCase(),
+          badgeColor: s.type?.includes('ssh') || s.type?.includes('key') ? 'blue' : 'default'
+        }))
+      ];
+      if (window.ConfigStudio?.ui?.renderDropdown) {
+        const mCtrl = window.ConfigStudio.ui.renderDropdown(manualSecretContainer, {
+          options: sshSecretOptions,
+          value: manualSecretVal,
+          placeholder: 'Выберите SSH-ключ из Vault...',
+          onChange: (val) => { manualSecretVal = val; }
+        });
+        activeDropdownControllers.push(mCtrl);
+      }
+    }
+
+    // If editing a node with direct SSH but no core host ref, open manual container
+    if (!isNew && !srv.sshHostRef && (srv.host || srv.connection?.ssh?.host)) {
+      if (manualContainer) manualContainer.style.display = 'block';
+    }
+
     if (hostPickerContainer) {
       const options = [
         {
           value: '',
           label: '-- Выберите хост из базы ядра --',
-          subtitle: 'Единый источник правды (/api/hosts)',
+          subtitle: coreHosts.length > 0 ? `Доступно в ядре: ${coreHosts.length} хост(ов)` : 'В базе ядра пока нет хостов',
           badge: 'CORE',
           badgeColor: 'default',
         },
-        ...coreHosts.map(h => ({
-          value: h.id,
-          label: h.name || h.id,
-          subtitle: `${h.user}@${h.host}:${h.port || 22}`,
-          badge: (h.group || 'SSH').toUpperCase(),
-          badgeColor: 'blue',
-          statusDot: 'online'
-        })),
+        ...coreHosts.map(h => {
+          const hostAddr = h.host || h.address || '';
+          const hostUser = h.user || h.username || 'root';
+          const hostPort = h.port || 22;
+          const labelTitle = h.name ? `${h.name} (${h.id})` : h.id;
+          return {
+            value: h.id,
+            label: labelTitle,
+            subtitle: `${hostUser}@${hostAddr}:${hostPort}`,
+            badge: (h.group || 'SSH').toUpperCase(),
+            badgeColor: 'blue',
+            statusDot: 'online'
+          };
+        }),
         {
           value: '__manual__',
-          label: '(Ввести вручную без привязки)',
-          subtitle: 'Кастомный узел',
+          label: '+ Ввести параметры SSH вручную',
+          subtitle: 'Указать IP, порт и ключ без привязки',
           badge: 'MANUAL',
           badgeColor: 'default',
         }
       ];
 
       const onHostChange = (val) => {
-        if (!val || val === '__manual__') {
+        if (!val) {
           if (hostPreview) hostPreview.style.display = 'none';
+          if (manualContainer) manualContainer.style.display = 'none';
           srv.sshHostRef = '';
           return;
         }
+        if (val === '__manual__') {
+          if (hostPreview) hostPreview.style.display = 'none';
+          if (manualContainer) manualContainer.style.display = 'block';
+          srv.sshHostRef = '';
+          return;
+        }
+        if (manualContainer) manualContainer.style.display = 'none';
         const selected = coreHosts.find(h => h.id === val);
         if (selected) {
           srv.sshHostRef = selected.id;
+          const hostAddr = selected.host || selected.address || '';
+          const hostUser = selected.user || selected.username || 'root';
+          const hostPort = selected.port || 22;
+
           if (isNew) {
             const idInput = modal.querySelector('#srv-id');
             const nameInput = modal.querySelector('#srv-name');
             const groupInput = modal.querySelector('#srv-group');
             const tagsInput = modal.querySelector('#srv-tags');
 
-            if (idInput && !idInput.value) idInput.value = selected.id;
-            if (nameInput && !nameInput.value) nameInput.value = selected.name || selected.id;
-            if (groupInput && (!groupInput.value || groupInput.value === 'default')) groupInput.value = selected.group || 'default';
-            if (tagsInput && !tagsInput.value && selected.tags) tagsInput.value = selected.tags.join(', ');
+            const defaultId = (selected.name || selected.id).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+            if (idInput && (!idInput.value || idInput.value === 'alpine-01')) {
+              idInput.value = defaultId;
+            }
+            if (nameInput && (!nameInput.value || nameInput.value === 'Production VPS')) {
+              nameInput.value = selected.name || selected.id;
+            }
+            if (groupInput && (!groupInput.value || groupInput.value === 'default')) {
+              groupInput.value = selected.group || 'default';
+            }
+            if (tagsInput && !tagsInput.value && selected.tags) {
+              tagsInput.value = selected.tags.join(', ');
+            }
 
-            srv.id = idInput ? idInput.value : selected.id;
+            srv.id = idInput ? idInput.value : defaultId;
             srv.name = nameInput ? nameInput.value : (selected.name || selected.id);
           }
           if (hostPreview) {
             hostPreview.style.display = 'block';
             hostPreview.innerHTML = `
-              <div class="cs-fleet-core-host-pill">
+              <div class="cs-fleet-core-host-pill" style="margin-top:8px;">
                 <div style="display:flex;align-items:center;gap:6px;">
                   <span>🖥️</span>
-                  <span style="font-weight:600;">${escapeHtml(selected.user)}@${escapeHtml(selected.host)}:${selected.port || 22}</span>
+                  <span style="font-weight:600;">${escapeHtml(hostUser)}@${escapeHtml(hostAddr)}:${hostPort}</span>
                 </div>
                 <span class="cs-fleet-badge hybrid" style="font-size:9px;">ЯДРО</span>
               </div>
@@ -1557,8 +1689,8 @@
           }
           const urlHint = modal.querySelector('#srv-agent-url-hint');
           const portVal = modal.querySelector('#srv-agent-port')?.value || 8085;
-          if (urlHint) {
-            urlHint.textContent = `Динамический URL: http://${selected.host}:${portVal}`;
+          if (urlHint && hostAddr) {
+            urlHint.textContent = `Динамический URL: http://${hostAddr}:${portVal}`;
           }
         }
       };
@@ -1581,6 +1713,10 @@
         `;
         const sel = hostPickerContainer.querySelector('#srv-host-select');
         sel.addEventListener('change', (e) => onHostChange(e.target.value));
+      }
+
+      if (srv.sshHostRef) {
+        onHostChange(srv.sshHostRef);
       }
     }
 
@@ -1714,17 +1850,76 @@
       srv.rollout = srv.rollout || {};
       srv.rollout.canary = canaryChecked;
 
+      const isManual = modal.querySelector('#srv-manual-ssh-container')?.style.display === 'block';
+      if (isManual) {
+        const mHost = modal.querySelector('#srv-manual-host')?.value.trim();
+        const mPort = parseInt(modal.querySelector('#srv-manual-port')?.value, 10) || 22;
+        const mUser = modal.querySelector('#srv-manual-user')?.value.trim() || 'root';
+        const saveCore = modal.querySelector('#srv-manual-save-core')?.checked;
+
+        if (!mHost) {
+          showToast('Укажите хост или IP для SSH', 'error');
+          return;
+        }
+
+        srv.sshHostRef = '';
+        srv.host = mHost;
+        srv.port = mPort;
+        srv.user = mUser;
+        srv.identity = manualSecretVal;
+        srv.connection = srv.connection || {};
+        srv.connection.ssh = {
+          enabled: true,
+          host: mHost,
+          port: mPort,
+          user: mUser,
+          identity: manualSecretVal
+        };
+
+        if (saveCore) {
+          try {
+            const newCoreHost = {
+              id: srv.id,
+              name: srv.name || srv.id,
+              host: mHost,
+              port: mPort,
+              user: mUser,
+              identityId: manualSecretVal,
+              authType: manualSecretVal ? 'vault' : 'none',
+              group: srv.group || 'default',
+              tags: srv.tags || []
+            };
+            if (window.ConfigStudio?.ssh?.save) {
+              await window.ConfigStudio.ssh.save(newCoreHost);
+            } else {
+              await fetch('/api/hosts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-ConfigStudio-Web': '1' },
+                body: JSON.stringify(newCoreHost)
+              });
+            }
+          } catch (e) {
+            console.warn('[Fleet] Failed to sync manual host to core:', e);
+          }
+        }
+      }
+
       if (!srv.id) {
         const errBanner = modal.querySelector('#cs-fleet-validation-error');
         if (errBanner) {
           errBanner.innerHTML = `
             <div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:8px;padding:10px 12px;color:#fca5a5;font-size:12px;display:flex;align-items:center;gap:8px;">
               <span>${ICONS.warning}</span>
-              <span>Пожалуйста, укажите уникальный ID узла или выберите хост из базы ядра</span>
+              <span>Пожалуйста, укажите уникальный ID узла</span>
             </div>
           `;
         }
-        showToast('Укажите ID узла или выберите хост из ядра', 'error');
+        showToast('Укажите ID узла', 'error');
+        return;
+      }
+
+      if (!srv.sshHostRef && !isManual && !srv.connection?.ssh?.host) {
+        showToast('Выберите хост из ядра или укажите параметры SSH вручную', 'error');
         return;
       }
 
