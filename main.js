@@ -1,5 +1,5 @@
 /**
- * Config Studio — Servers & Fleet Manager Official Plugin v1.2.4
+ * Config Studio — Servers & Fleet Manager Official Plugin v1.5.2
  * Unified Fleet Manager, servers.yaml inventory, native SSH/SFTP,
  * embedded Remote Agent integration, dynamic TOTP Web Crypto,
  * context menu file deployment and LAN discovery.
@@ -145,6 +145,19 @@
       }
     } catch (_) {}
 
+    // Fallback: query core REST API if bridge method is missing or returned empty
+    if (!secretVal) {
+      try {
+        const res = await fetch(`/api/secrets/${encodeURIComponent(secretId)}`, {
+          headers: { 'X-ConfigStudio-Web': '1' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          secretVal = data.secret || data;
+        }
+      } catch (_) {}
+    }
+
     if (!secretVal) {
       return secretId || '';
     }
@@ -154,12 +167,12 @@
 
     if (typeof secretVal === 'object') {
       keyId = secretVal.keyId || 'cs_key';
-      secret = secretVal.secret || '';
+      secret = secretVal.secret || secretVal.value || '';
     } else if (typeof secretVal === 'string') {
       try {
         const parsed = JSON.parse(secretVal);
         keyId = parsed.keyId || 'cs_key';
-        secret = parsed.secret || '';
+        secret = parsed.secret || parsed.value || '';
       } catch (_) {
         if (secretVal.includes(':')) {
           const parts = secretVal.split(':');
@@ -238,17 +251,26 @@
   }
 
   async function pingAllServers() {
-    for (const s of servers) {
+    const nonLocal = servers.filter(s => {
       if (s.id === 'localhost') {
         pingData['localhost'] = { status: 'online', ms: 0 };
-        continue;
+        return false;
       }
-      try {
-        const res = await apiFetch(`/api/servers/ping/${encodeURIComponent(s.id)}`, { method: 'POST' });
-        pingData[s.id] = { status: res.status, ms: res.latencyMs };
-      } catch (e) {
-        pingData[s.id] = { status: 'offline', ms: null, error: e.message };
-      }
+      return true;
+    });
+
+    const concurrency = 5;
+    for (let i = 0; i < nonLocal.length; i += concurrency) {
+      const chunk = nonLocal.slice(i, i + concurrency);
+      await Promise.allSettled(chunk.map(async (s) => {
+        try {
+          const res = await apiFetch(`/api/servers/ping/${encodeURIComponent(s.id)}`, { method: 'POST' });
+          pingData[s.id] = { status: res.status, ms: res.latencyMs };
+        } catch (e) {
+          pingData[s.id] = { status: 'offline', ms: null, error: e.message };
+        }
+      }));
+      refreshUI();
     }
     refreshUI();
   }
@@ -827,8 +849,13 @@
               if (res.ok) {
                 const data = await res.json();
                 content = data.content || '';
+              } else {
+                console.warn('[Fleet] Failed to read file for send:', res.statusText);
               }
-            } catch (_) {}
+            } catch (err) {
+              console.warn('[Fleet] Error reading file for send:', err);
+              showToast('Не удалось прочитать файл: ' + (err.message || err), 'warning');
+            }
           }
         }
         openSendToFleetModal(filename, content || '');
@@ -983,7 +1010,7 @@
     } else {
       targetContainer.innerHTML = `
         <select class="cs-fleet-form-select" id="fleet-send-target-select">
-          ${targetOptions.map(t => `<option value="${escapeHtml(t.value)}" ${t.value === selectedTargetId ? 'selected' : ''}>${escapeHtml(t.label)} (${t.subtitle})</option>`).join('')}
+          ${targetOptions.map(t => `<option value="${escapeHtml(t.value)}" ${t.value === selectedTargetId ? 'selected' : ''}>${escapeHtml(t.label)} (${escapeHtml(t.subtitle)})</option>`).join('')}
         </select>
       `;
       targetContainer.querySelector('select').addEventListener('change', (e) => updateTargetDirState(e.target.value));
@@ -2013,7 +2040,7 @@
             }
             showToast('servers.yaml успешно сохранен', 'success');
             await loadServers();
-            renderDropdown();
+            refreshUI();
           }
         });
         return;
@@ -2076,7 +2103,7 @@
         showToast('servers.yaml обновлен', 'success');
         closeModal();
         await loadServers();
-        renderDropdown();
+        refreshUI();
       } catch (err) {
         showToast(`Ошибка сохранения YAML: ${err.message}`, 'error');
       }
@@ -2273,7 +2300,7 @@
     }
 
     let isRunning = false;
-    let eventSource = null;
+    let batchAbortCtrl = null;
 
     modal.innerHTML = `
       <div class="cs-fleet-modal-header">
@@ -2490,8 +2517,9 @@
     });
 
     function closeModal() {
-      if (eventSource) {
-        try { eventSource.close(); } catch (_) {}
+      if (batchAbortCtrl) {
+        try { batchAbortCtrl.abort(); } catch (_) {}
+        batchAbortCtrl = null;
       }
       try { serviceTypeDropdown?.destroy(); } catch (_) {}
       overlay.remove();
@@ -2632,11 +2660,12 @@
       params.set('serviceType', serviceType);
 
       const url = `/api/servers/batch-install/stream?${params.toString()}`;
-      eventSource = new EventSource(url);
+      batchAbortCtrl = new AbortController();
+      let isDone = false;
 
-      eventSource.addEventListener('progress', (e) => {
+      function handleProgressEvent(dataStr) {
         try {
-          const st = JSON.parse(e.data);
+          const st = JSON.parse(dataStr);
           const current = hostStatusMap.get(st.serverId) || {};
           const merged = Object.assign(current, st);
           hostStatusMap.set(st.serverId, merged);
@@ -2645,14 +2674,13 @@
         } catch (err) {
           console.warn('[BatchInstall] Error parsing progress event:', err);
         }
-      });
+      }
 
-      let isDone = false;
-
-      eventSource.addEventListener('done', async (e) => {
+      async function handleDoneEvent(dataStr) {
+        if (isDone) return;
         isDone = true;
         try {
-          const summary = JSON.parse(e.data);
+          const summary = JSON.parse(dataStr);
           progressBar.style.width = '100%';
           closeBtn.style.display = 'none';
           runBtn.innerHTML = `<span>✓ Готово</span>`;
@@ -2663,17 +2691,19 @@
         } catch (_) {
           showToast('Массовая установка завершена!', 'success');
         }
-        eventSource.close();
-        eventSource = null;
+        if (batchAbortCtrl) {
+          try { batchAbortCtrl.abort(); } catch (_) {}
+          batchAbortCtrl = null;
+        }
         isRunning = false;
         await loadServers();
-      });
+      }
 
-      eventSource.addEventListener('error', () => {
+      function handleStreamError() {
         if (isDone) return;
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
+        if (batchAbortCtrl) {
+          try { batchAbortCtrl.abort(); } catch (_) {}
+          batchAbortCtrl = null;
         }
         isRunning = false;
         closeBtn.style.display = 'none';
@@ -2682,7 +2712,76 @@
         runBtn.onclick = closeModal;
         statusHint.textContent = 'Связь с сервером завершена.';
         loadServers();
-      });
+      }
+
+      // Safe stream with X-ConfigStudio-Web header
+      (async () => {
+        try {
+          const streamRes = await fetch(url, {
+            headers: {
+              'X-ConfigStudio-Web': '1',
+              'Accept': 'text/event-stream'
+            },
+            signal: batchAbortCtrl.signal
+          });
+          if (!streamRes.ok) {
+            let msg = streamRes.statusText;
+            try {
+              const j = await streamRes.json();
+              if (j.error) msg = j.error;
+            } catch (_) {}
+            throw new Error(`HTTP ${streamRes.status}: ${msg}`);
+          }
+          if (!streamRes.body) throw new Error('ReadableStream not available');
+
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            let currentEvent = 'message';
+            let currentData = '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) {
+                if (currentData) {
+                  if (currentEvent === 'progress') handleProgressEvent(currentData);
+                  else if (currentEvent === 'done') await handleDoneEvent(currentData);
+                  currentEvent = 'message';
+                  currentData = '';
+                }
+                continue;
+              }
+              if (trimmed.startsWith('event:')) {
+                currentEvent = trimmed.slice(6).trim();
+              } else if (trimmed.startsWith('data:')) {
+                currentData += (currentData ? '\n' : '') + trimmed.slice(5).trim();
+              }
+            }
+            if (currentData) {
+              if (currentEvent === 'progress') handleProgressEvent(currentData);
+              else if (currentEvent === 'done') await handleDoneEvent(currentData);
+              currentEvent = 'message';
+              currentData = '';
+            }
+          }
+          if (!isDone) {
+            handleStreamError();
+          }
+        } catch (err) {
+          if (!isDone && !batchAbortCtrl?.signal.aborted) {
+            console.warn('[BatchInstall] Stream error:', err);
+            handleStreamError();
+          }
+        }
+      })();
     });
 
     overlay.appendChild(modal);

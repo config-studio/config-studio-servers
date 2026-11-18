@@ -20,16 +20,16 @@
     "fleet-manager"
   ],
   "agent": {
-    "version": "2.3.2",
-    "commit": "1fe3dc3",
+    "version": "2.3.6",
+    "commit": "7d2d845",
     "binaries": {
       "linux-amd64": {
         "path": "agents/config-studio-agent-linux-amd64",
-        "sha256": "df46e867a69ebe29b2efc83d738cd86e647a04c9aab25c10304308c4cdd440c9"
+        "sha256": "0a0927749d440540cc30c4ff58580941862aacfeb87f597287cc15e348f8d15d"
       },
       "linux-arm64": {
         "path": "agents/config-studio-agent-linux-arm64",
-        "sha256": "361a7ecaaeb6d84712618b1cd0e65732be2ccdb8f98132c4ad71db3a82be5054"
+        "sha256": "48d217e218b453076f3691061e01117d93822efe156a201cb1fb7e6d2b26ef64"
       }
     }
   },
