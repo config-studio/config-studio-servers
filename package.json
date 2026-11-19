@@ -1,0 +1,19 @@
+{
+  "name": "config-studio-servers",
+  "version": "1.5.2",
+  "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP, массовая параллельная установка агентов и отправка файлов",
+  "author": "Config Studio Team",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.js",
+    "pack": "node pack.js",
+    "test": "node --test dist/test/*.test.js",
+    "test:ts": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.5"
+  }
+}
