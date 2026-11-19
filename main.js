@@ -42,6 +42,7 @@ var ConfigStudioServersPlugin = (() => {
     fetchServers: () => fetchServers,
     fetchVaultSecrets: () => fetchVaultSecrets,
     fleet: () => fleet,
+    formatAgentConnectionLink: () => formatAgentConnectionLink,
     formatYamlSummary: () => formatYamlSummary,
     generateRandomBase32: () => generateRandomBase32,
     generateRandomKeyId: () => generateRandomKeyId,
@@ -58,6 +59,7 @@ var ConfigStudioServersPlugin = (() => {
     openRawYAMLModal: () => openRawYAMLModal,
     openSendToFleetModal: () => openSendToFleetModal,
     openTokensModal: () => openTokensModal,
+    parseAgentConnectionLink: () => parseAgentConnectionLink,
     pingServer: () => pingServer,
     registerHeaderSwitcher: () => registerHeaderSwitcher,
     registerSidebarPanel: () => registerSidebarPanel,
@@ -234,6 +236,71 @@ var ConfigStudioServersPlugin = (() => {
   function generateRandomKeyId(prefix = "cs_key") {
     const rand = Math.random().toString(36).slice(2, 8);
     return `${prefix}_${rand}`;
+  }
+  function parseAgentConnectionLink(raw) {
+    let link = (raw || "").trim();
+    if (!link) {
+      throw new Error("\u041F\u0443\u0441\u0442\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F");
+    }
+    if (link.startsWith("csagent://")) {
+      link = "cs-agent://" + link.slice("csagent://".length);
+    } else if (link.startsWith("cs://agent/")) {
+      link = "cs-agent://" + link.slice("cs://agent/".length);
+    } else if (!link.startsWith("cs-agent://")) {
+      throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0445\u0435\u043C\u0430: \u0441\u0441\u044B\u043B\u043A\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u043D\u0430\u0447\u0438\u043D\u0430\u0442\u044C\u0441\u044F \u0441 cs-agent://");
+    }
+    const httpEquivalent = "http://" + link.slice("cs-agent://".length);
+    const u = new URL(httpEquivalent);
+    const keyId = decodeURIComponent(u.username || "");
+    const secret = decodeURIComponent(u.password || "");
+    if (!keyId || !secret) {
+      throw new Error("\u0412 \u0441\u0441\u044B\u043B\u043A\u0435 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u044E\u0442 \u0443\u0447\u0435\u0442\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435 (\u0444\u043E\u0440\u043C\u0430\u0442: cs-agent://keyId:secret@host:port)");
+    }
+    const host = u.hostname;
+    if (!host) {
+      throw new Error("\u0412 \u0441\u0441\u044B\u043B\u043A\u0435 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0445\u043E\u0441\u0442 \u0438\u043B\u0438 IP-\u0430\u0434\u0440\u0435\u0441");
+    }
+    const port = u.port ? parseInt(u.port, 10) : 8085;
+    const tls = u.searchParams.get("tls") === "1" || u.searchParams.get("tls") === "true";
+    const rootsRaw = u.searchParams.get("roots") || u.searchParams.get("paths") || "";
+    const roots = rootsRaw ? rootsRaw.split(",").map((r) => r.trim()).filter(Boolean) : [];
+    let nodeName = u.hash ? decodeURIComponent(u.hash.replace(/^#/, "")) : "";
+    if (!nodeName) {
+      nodeName = u.searchParams.get("name") || host;
+    }
+    let nodeId = u.searchParams.get("id") || "";
+    if (!nodeId) {
+      nodeId = nodeName.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "");
+    }
+    return {
+      keyId,
+      secret: secret.toUpperCase(),
+      host,
+      port,
+      tls,
+      roots,
+      nodeName,
+      nodeId: nodeId || "agent-node"
+    };
+  }
+  function formatAgentConnectionLink(info) {
+    const host = info.host || "127.0.0.1";
+    const port = info.port || 8085;
+    const keyId = encodeURIComponent(info.keyId || "cs_key");
+    const secret = encodeURIComponent(cleanBase32(info.secret));
+    const u = new URL(`http://${host}:${port}/`);
+    if (info.roots && info.roots.length > 0) {
+      u.searchParams.set("roots", info.roots.join(","));
+    }
+    if (info.tls) {
+      u.searchParams.set("tls", "1");
+    }
+    if (info.nodeId) {
+      u.searchParams.set("id", info.nodeId);
+    }
+    const name = info.nodeName || host;
+    const queryPart = u.search ? u.search : "";
+    return `cs-agent://${keyId}:${secret}@${host}:${port}/${queryPart}#${encodeURIComponent(name)}`;
   }
   function base32Decode(str) {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -631,6 +698,7 @@ var ConfigStudioServersPlugin = (() => {
     const isNew = !srv || !srv.id;
     const initialId = srv?.id || "";
     const initialName = srv?.name || "";
+    const initialRoots = srv?.connection?.agent?.roots || [];
     let initialHost = "";
     let initialPort = srv?.connection?.agent?.port || DEFAULT_AGENT_PORT;
     let initialHttps = false;
@@ -691,11 +759,25 @@ var ConfigStudioServersPlugin = (() => {
     </div>
 
     <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
-      <!-- Informational banner -->
-      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:11.5px;color:var(--cs-srv-text-primary);line-height:1.5;">
-        <div><b>\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u044F\u043C\u043E\u0433\u043E \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F:</b> \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A \u0434\u0435\u043C\u043E\u043D\u0443 Remote Agent \u043F\u043E HTTP/HTTPS \u0431\u0435\u0437 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F SSH.</div>
-        <div style="margin-top:4px;color:var(--cs-srv-text-muted);">
-          \u041A\u043B\u044E\u0447 API \u0438 \u0441\u0435\u043A\u0440\u0435\u0442 TOTP \u0448\u0438\u0444\u0440\u0443\u044E\u0442\u0441\u044F \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u0442\u0441\u044F \u0432 <b>Core Vault</b> (<code style="color:var(--cs-srv-accent);">agent_credentials</code>). \u0412 \u0444\u0430\u0439\u043B\u0435 <code style="color:var(--cs-srv-accent);">servers.yaml</code> \u0444\u043E\u0440\u043C\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u0437\u0430\u0449\u0438\u0449\u0435\u043D\u043D\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u0432\u0438\u0434\u0430 <code style="color:var(--cs-srv-accent);">vault_secret: agent:&lt;id&gt;</code> \u0431\u0435\u0437 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0445 \u043F\u0430\u0440\u043E\u043B\u0435\u0439.
+      <!-- Quick Import / Export Card (VLESS / Hysteria style URL) -->
+      <div style="background:linear-gradient(135deg, rgba(56,189,248,0.08), rgba(99,102,241,0.08));border:1px solid rgba(56,189,248,0.3);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--cs-srv-text-primary);display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>\u26A1</span>
+            <span>1-Click \u0418\u043C\u043F\u043E\u0440\u0442 \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0435 \u0430\u0433\u0435\u043D\u0442\u0430 (cs-agent://)</span>
+          </div>
+          <button type="button" id="cs-manual-copy-link-btn" title="\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0432\u0441\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u0430\u043A \u0441\u0441\u044B\u043B\u043A\u0443 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
+            \u{1F4CB} \u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443 cs-agent://
+          </button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" class="cs-fleet-form-input" id="cs-manual-import-link" placeholder="\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0443: cs-agent://key:secret@host:port/?roots=/opt,/var#node-name" style="font-family:monospace;font-size:11.5px;" />
+          <button type="button" class="cs-fleet-btn-secondary" id="cs-manual-import-btn" style="white-space:nowrap;padding:6px 14px;font-size:11.5px;">
+            \u0418\u043C\u043F\u043E\u0440\u0442
+          </button>
+        </div>
+        <div id="cs-manual-import-status" style="font-size:11px;margin-top:5px;color:var(--cs-srv-text-muted);">
+          \u0421\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0441\u0442\u0440\u043E\u043A\u0443 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F \u043F\u0440\u044F\u043C\u043E \u0438\u0437 \u043A\u043E\u043D\u0441\u043E\u043B\u0438 Remote Agent (\u043A\u043E\u043C\u0430\u043D\u0434\u0430: <code style="color:var(--cs-srv-accent);">config-studio-agent link</code>)
         </div>
       </div>
 
@@ -721,11 +803,11 @@ var ConfigStudioServersPlugin = (() => {
         </div>
       `}
 
-      <!-- Network parameters -->
+      <!-- Network parameters & Multi-Root Workspaces -->
       <div style="background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;">
         <div style="font-size:11.5px;font-weight:600;margin-bottom:10px;color:var(--cs-srv-text-primary);display:flex;align-items:center;gap:6px;">
           <span>\u{1F310}</span>
-          <span>\u0421\u0435\u0442\u0435\u0432\u043E\u0439 \u0430\u0434\u0440\u0435\u0441 \u0430\u0433\u0435\u043D\u0442\u0430</span>
+          <span>\u0421\u0435\u0442\u0435\u0432\u043E\u0439 \u0430\u0434\u0440\u0435\u0441 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0438</span>
         </div>
         <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 2fr) 110px minmax(0, 1fr); gap: 10px; align-items: start;">
           <div class="cs-fleet-form-group">
@@ -744,6 +826,14 @@ var ConfigStudioServersPlugin = (() => {
             </div>
           </div>
         </div>
+
+        <!-- Multiple Working Directories (Allowed Roots) -->
+        <div class="cs-fleet-form-group" style="margin-top:10px;">
+          <label class="cs-fleet-form-label">\u0411\u0430\u0437\u043E\u0432\u044B\u0435 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u043F\u0430\u043F\u043A\u0438 (\u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E)</label>
+          <input type="text" class="cs-fleet-form-input" id="cs-manual-roots" value="${escapeHtml(initialRoots.join(", "))}" placeholder="/opt, /var/www, /etc" style="font-family:monospace;" />
+          <div class="cs-fleet-form-help">\u041A\u0430\u0442\u0430\u043B\u043E\u0433\u0438 \u0444\u0430\u0439\u043B\u043E\u0432\u043E\u0439 \u0441\u0438\u0441\u0442\u0435\u043C\u044B \u0430\u0433\u0435\u043D\u0442\u0430 \u0434\u043B\u044F \u043D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u0438 \u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0439</div>
+        </div>
+
         <div style="margin-top:8px;font-size:11.5px;color:#38bdf8;font-family:monospace;" id="cs-manual-url-hint">
           URL: ${initialHttps ? "https" : "http"}://${initialHost || "127.0.0.1"}:${initialPort}
         </div>
@@ -820,11 +910,16 @@ var ConfigStudioServersPlugin = (() => {
     }
     modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
     modal.querySelector("#cs-manual-cancel-btn")?.addEventListener("click", closeModal);
+    const importInput = modal.querySelector("#cs-manual-import-link");
+    const importBtn = modal.querySelector("#cs-manual-import-btn");
+    const importStatusEl = modal.querySelector("#cs-manual-import-status");
+    const copyLinkBtn = modal.querySelector("#cs-manual-copy-link-btn");
     const nodeIdInput = modal.querySelector("#cs-manual-node-id");
     const nodeNameInput = modal.querySelector("#cs-manual-node-name");
     const hostInput = modal.querySelector("#cs-manual-host");
     const portInput = modal.querySelector("#cs-manual-port");
     const httpsCheckbox = modal.querySelector("#cs-manual-https");
+    const rootsInput = modal.querySelector("#cs-manual-roots");
     const urlHintEl = modal.querySelector("#cs-manual-url-hint");
     const keyIdInput = modal.querySelector("#cs-manual-key-id");
     const totpSecretInput = modal.querySelector("#cs-manual-totp-secret");
@@ -860,9 +955,85 @@ var ConfigStudioServersPlugin = (() => {
         totpStatusEl.style.color = "#f59e0b";
       }
     }
+    function handleImportFromLink(linkStr) {
+      const raw = linkStr.trim();
+      if (!raw) return false;
+      try {
+        const parsed = parseAgentConnectionLink(raw);
+        hostInput.value = parsed.host;
+        portInput.value = String(parsed.port);
+        httpsCheckbox.checked = parsed.tls;
+        keyIdInput.value = parsed.keyId;
+        totpSecretInput.value = parsed.secret;
+        if (parsed.roots && parsed.roots.length > 0) {
+          rootsInput.value = parsed.roots.join(", ");
+        }
+        if (nodeNameInput) {
+          nodeNameInput.value = parsed.nodeName;
+        }
+        if (nodeIdInput && isNew) {
+          nodeIdInput.value = parsed.nodeId;
+        }
+        vaultIdInput.value = `agent:${parsed.nodeId}`;
+        updateLivePreviews();
+        importStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">\u2713 \u0421\u0441\u044B\u043B\u043A\u0430 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u0430: ${escapeHtml(parsed.nodeName)} (${escapeHtml(parsed.host)}:${parsed.port})</span>`;
+        showToast(`\u0421\u0441\u044B\u043B\u043A\u0430 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u0430: ${parsed.nodeName}`, "success");
+        setTimeout(() => testBtn.click(), 100);
+        return true;
+      } catch (err) {
+        importStatusEl.innerHTML = `<span style="color:#ef4444;">\u2715 \u041E\u0448\u0438\u0431\u043A\u0430 \u0438\u043C\u043F\u043E\u0440\u0442\u0430 \u0441\u0441\u044B\u043B\u043A\u0438: ${escapeHtml(err.message)}</span>`;
+        return false;
+      }
+    }
+    importBtn.addEventListener("click", () => {
+      handleImportFromLink(importInput.value);
+    });
+    importInput.addEventListener("input", () => {
+      const val = importInput.value.trim();
+      if (val.startsWith("cs-agent://") || val.startsWith("csagent://") || val.startsWith("cs://agent/")) {
+        handleImportFromLink(val);
+      }
+    });
+    copyLinkBtn.addEventListener("click", async () => {
+      const host = hostInput.value.trim() || "127.0.0.1";
+      const port = parseInt(portInput.value.trim(), 10) || DEFAULT_AGENT_PORT;
+      const isHttps = httpsCheckbox.checked;
+      const keyId = keyIdInput.value.trim() || "cs_agent_master";
+      const secret = cleanBase32(totpSecretInput.value) || "JBSWY3DPEHPK3PXP";
+      const rawRoots = rootsInput.value.split(",").map((r) => r.trim()).filter(Boolean);
+      const nodeName = nodeNameInput ? nodeNameInput.value.trim() : srv?.name || host;
+      const nodeId = nodeIdInput ? sanitizeServerId(nodeIdInput.value) : srv?.id || "node";
+      const link = formatAgentConnectionLink({
+        keyId,
+        secret,
+        host,
+        port,
+        tls: isHttps,
+        roots: rawRoots,
+        nodeName,
+        nodeId
+      });
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(link);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = link;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        }
+        showToast("\u0421\u0441\u044B\u043B\u043A\u0430 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F cs-agent:// \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u0430 \u0432 \u0431\u0443\u0444\u0435\u0440 \u043E\u0431\u043C\u0435\u043D\u0430!", "success");
+        importStatusEl.innerHTML = `<span style="color:#38bdf8;">\u2713 \u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E: <code style="word-break:break-all;">${escapeHtml(link)}</code></span>`;
+      } catch (err) {
+        showToast(`\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: ${err.message}`, "error");
+      }
+    });
     hostInput.addEventListener("input", updateLivePreviews);
     portInput.addEventListener("input", updateLivePreviews);
     httpsCheckbox.addEventListener("change", updateLivePreviews);
+    rootsInput.addEventListener("input", updateLivePreviews);
     nodeIdInput?.addEventListener("input", updateLivePreviews);
     totpSecretInput.addEventListener("input", updateLivePreviews);
     vaultIdInput.addEventListener("input", () => {
@@ -959,6 +1130,7 @@ var ConfigStudioServersPlugin = (() => {
       const vaultSecretId = vaultIdInput.value.trim() || `agent:${sanitizedId}`;
       const isHttps = httpsCheckbox.checked;
       const agentUrl = `${isHttps ? "https" : "http"}://${host}:${port}`;
+      const roots = rootsInput.value.split(",").map((r) => r.trim()).filter(Boolean);
       saveBtn.disabled = true;
       saveBtn.innerHTML = `<span>\u23F3 \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0432 Vault...</span>`;
       try {
@@ -988,7 +1160,8 @@ var ConfigStudioServersPlugin = (() => {
           url: agentUrl,
           port,
           vaultSecret: vaultSecretId,
-          tlsVerify: isHttps
+          tlsVerify: isHttps,
+          roots
         };
         await saveServer(targetNode);
         await fleet.loadAndSyncServers();

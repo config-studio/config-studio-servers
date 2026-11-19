@@ -8,15 +8,17 @@ import {
   isValidBase32,
   generateRandomBase32,
   generateRandomKeyId,
-  generateTOTPWebCrypto
+  generateTOTPWebCrypto,
+  parseAgentConnectionLink,
+  formatAgentConnectionLink
 } from '../crypto';
 import { sanitizeServerId } from '../yaml';
 
 /**
  * Manual Remote Agent Configuration Dialog
  * Configures connection parameters (IP, port, HTTPS), API Key and TOTP Base32 secret.
- * Saves encrypted credentials into Core Vault (type: agent_credentials) and writes
- * clean reference `vault_secret: agent:<id>` into servers.yaml.
+ * Supports 1-Click Import and Export via standard cs-agent:// connection URLs (VLESS/Hysteria style),
+ * multiple working directories (Allowed Roots), and secure Vault secret synchronization.
  */
 export async function openManualAgentModal(
   srv?: ServerNode,
@@ -25,6 +27,7 @@ export async function openManualAgentModal(
   const isNew = !srv || !srv.id;
   const initialId = srv?.id || '';
   const initialName = srv?.name || '';
+  const initialRoots = srv?.connection?.agent?.roots || [];
 
   // Extract initial host and port from agent URL or SSH host
   let initialHost = '';
@@ -99,11 +102,25 @@ export async function openManualAgentModal(
     </div>
 
     <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
-      <!-- Informational banner -->
-      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:11.5px;color:var(--cs-srv-text-primary);line-height:1.5;">
-        <div><b>Режим прямого подключения:</b> подключение к демону Remote Agent по HTTP/HTTPS без использования SSH.</div>
-        <div style="margin-top:4px;color:var(--cs-srv-text-muted);">
-          Ключ API и секрет TOTP шифруются и сохраняются в <b>Core Vault</b> (<code style="color:var(--cs-srv-accent);">agent_credentials</code>). В файле <code style="color:var(--cs-srv-accent);">servers.yaml</code> формируется защищенная ссылка вида <code style="color:var(--cs-srv-accent);">vault_secret: agent:&lt;id&gt;</code> без открытых паролей.
+      <!-- Quick Import / Export Card (VLESS / Hysteria style URL) -->
+      <div style="background:linear-gradient(135deg, rgba(56,189,248,0.08), rgba(99,102,241,0.08));border:1px solid rgba(56,189,248,0.3);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--cs-srv-text-primary);display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>⚡</span>
+            <span>1-Click Импорт по ссылке агента (cs-agent://)</span>
+          </div>
+          <button type="button" id="cs-manual-copy-link-btn" title="Скопировать все параметры как ссылку подключения cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
+            📋 Скопировать ссылку cs-agent://
+          </button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" class="cs-fleet-form-input" id="cs-manual-import-link" placeholder="Вставьте ссылку: cs-agent://key:secret@host:port/?roots=/opt,/var#node-name" style="font-family:monospace;font-size:11.5px;" />
+          <button type="button" class="cs-fleet-btn-secondary" id="cs-manual-import-btn" style="white-space:nowrap;padding:6px 14px;font-size:11.5px;">
+            Импорт
+          </button>
+        </div>
+        <div id="cs-manual-import-status" style="font-size:11px;margin-top:5px;color:var(--cs-srv-text-muted);">
+          Скопируйте строку подключения прямо из консоли Remote Agent (команда: <code style="color:var(--cs-srv-accent);">config-studio-agent link</code>)
         </div>
       </div>
 
@@ -133,11 +150,11 @@ export async function openManualAgentModal(
       `
       }
 
-      <!-- Network parameters -->
+      <!-- Network parameters & Multi-Root Workspaces -->
       <div style="background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;">
         <div style="font-size:11.5px;font-weight:600;margin-bottom:10px;color:var(--cs-srv-text-primary);display:flex;align-items:center;gap:6px;">
           <span>🌐</span>
-          <span>Сетевой адрес агента</span>
+          <span>Сетевой адрес и рабочие каталоги</span>
         </div>
         <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 2fr) 110px minmax(0, 1fr); gap: 10px; align-items: start;">
           <div class="cs-fleet-form-group">
@@ -156,6 +173,14 @@ export async function openManualAgentModal(
             </div>
           </div>
         </div>
+
+        <!-- Multiple Working Directories (Allowed Roots) -->
+        <div class="cs-fleet-form-group" style="margin-top:10px;">
+          <label class="cs-fleet-form-label">Базовые рабочие папки (через запятую)</label>
+          <input type="text" class="cs-fleet-form-input" id="cs-manual-roots" value="${escapeHtml(initialRoots.join(', '))}" placeholder="/opt, /var/www, /etc" style="font-family:monospace;" />
+          <div class="cs-fleet-form-help">Каталоги файловой системы агента для навигации и редактирования конфигураций</div>
+        </div>
+
         <div style="margin-top:8px;font-size:11.5px;color:#38bdf8;font-family:monospace;" id="cs-manual-url-hint">
           URL: ${initialHttps ? 'https' : 'http'}://${initialHost || '127.0.0.1'}:${initialPort}
         </div>
@@ -236,11 +261,17 @@ export async function openManualAgentModal(
   modal.querySelector('#cs-manual-cancel-btn')?.addEventListener('click', closeModal);
 
   // DOM Elements
+  const importInput = modal.querySelector('#cs-manual-import-link') as HTMLInputElement;
+  const importBtn = modal.querySelector('#cs-manual-import-btn') as HTMLButtonElement;
+  const importStatusEl = modal.querySelector('#cs-manual-import-status') as HTMLElement;
+  const copyLinkBtn = modal.querySelector('#cs-manual-copy-link-btn') as HTMLButtonElement;
+
   const nodeIdInput = modal.querySelector('#cs-manual-node-id') as HTMLInputElement;
   const nodeNameInput = modal.querySelector('#cs-manual-node-name') as HTMLInputElement;
   const hostInput = modal.querySelector('#cs-manual-host') as HTMLInputElement;
   const portInput = modal.querySelector('#cs-manual-port') as HTMLInputElement;
   const httpsCheckbox = modal.querySelector('#cs-manual-https') as HTMLInputElement;
+  const rootsInput = modal.querySelector('#cs-manual-roots') as HTMLInputElement;
   const urlHintEl = modal.querySelector('#cs-manual-url-hint') as HTMLElement;
   const keyIdInput = modal.querySelector('#cs-manual-key-id') as HTMLInputElement;
   const totpSecretInput = modal.querySelector('#cs-manual-totp-secret') as HTMLInputElement;
@@ -282,9 +313,100 @@ export async function openManualAgentModal(
     }
   }
 
+  // 1-Click Link Import Handler
+  function handleImportFromLink(linkStr: string): boolean {
+    const raw = linkStr.trim();
+    if (!raw) return false;
+
+    try {
+      const parsed = parseAgentConnectionLink(raw);
+      hostInput.value = parsed.host;
+      portInput.value = String(parsed.port);
+      httpsCheckbox.checked = parsed.tls;
+      keyIdInput.value = parsed.keyId;
+      totpSecretInput.value = parsed.secret;
+
+      if (parsed.roots && parsed.roots.length > 0) {
+        rootsInput.value = parsed.roots.join(', ');
+      }
+
+      if (nodeNameInput) {
+        nodeNameInput.value = parsed.nodeName;
+      }
+      if (nodeIdInput && isNew) {
+        nodeIdInput.value = parsed.nodeId;
+      }
+
+      vaultIdInput.value = `agent:${parsed.nodeId}`;
+      updateLivePreviews();
+
+      importStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">✓ Ссылка успешно распознана: ${escapeHtml(parsed.nodeName)} (${escapeHtml(parsed.host)}:${parsed.port})</span>`;
+      showToast(`Ссылка распознана: ${parsed.nodeName}`, 'success');
+
+      // Auto-trigger test connection check
+      setTimeout(() => testBtn.click(), 100);
+      return true;
+    } catch (err: any) {
+      importStatusEl.innerHTML = `<span style="color:#ef4444;">✕ Ошибка импорта ссылки: ${escapeHtml(err.message)}</span>`;
+      return false;
+    }
+  }
+
+  importBtn.addEventListener('click', () => {
+    handleImportFromLink(importInput.value);
+  });
+
+  importInput.addEventListener('input', () => {
+    const val = importInput.value.trim();
+    if (val.startsWith('cs-agent://') || val.startsWith('csagent://') || val.startsWith('cs://agent/')) {
+      handleImportFromLink(val);
+    }
+  });
+
+  // Copy current settings as cs-agent:// URL
+  copyLinkBtn.addEventListener('click', async () => {
+    const host = hostInput.value.trim() || '127.0.0.1';
+    const port = parseInt(portInput.value.trim(), 10) || DEFAULT_AGENT_PORT;
+    const isHttps = httpsCheckbox.checked;
+    const keyId = keyIdInput.value.trim() || 'cs_agent_master';
+    const secret = cleanBase32(totpSecretInput.value) || 'JBSWY3DPEHPK3PXP';
+    const rawRoots = rootsInput.value.split(',').map(r => r.trim()).filter(Boolean);
+    const nodeName = nodeNameInput ? nodeNameInput.value.trim() : (srv?.name || host);
+    const nodeId = nodeIdInput ? sanitizeServerId(nodeIdInput.value) : (srv?.id || 'node');
+
+    const link = formatAgentConnectionLink({
+      keyId,
+      secret,
+      host,
+      port,
+      tls: isHttps,
+      roots: rawRoots,
+      nodeName,
+      nodeId
+    });
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      showToast('Ссылка подключения cs-agent:// скопирована в буфер обмена!', 'success');
+      importStatusEl.innerHTML = `<span style="color:#38bdf8;">✓ Скопировано: <code style="word-break:break-all;">${escapeHtml(link)}</code></span>`;
+    } catch (err: any) {
+      showToast(`Не удалось скопировать: ${err.message}`, 'error');
+    }
+  });
+
   hostInput.addEventListener('input', updateLivePreviews);
   portInput.addEventListener('input', updateLivePreviews);
   httpsCheckbox.addEventListener('change', updateLivePreviews);
+  rootsInput.addEventListener('input', updateLivePreviews);
   nodeIdInput?.addEventListener('input', updateLivePreviews);
   totpSecretInput.addEventListener('input', updateLivePreviews);
 
@@ -407,6 +529,7 @@ export async function openManualAgentModal(
     const vaultSecretId = vaultIdInput.value.trim() || `agent:${sanitizedId}`;
     const isHttps = httpsCheckbox.checked;
     const agentUrl = `${isHttps ? 'https' : 'http'}://${host}:${port}`;
+    const roots = rootsInput.value.split(',').map(r => r.trim()).filter(Boolean);
 
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<span>⏳ Сохранение в Vault...</span>`;
@@ -443,7 +566,8 @@ export async function openManualAgentModal(
         url: agentUrl,
         port: port,
         vaultSecret: vaultSecretId,
-        tlsVerify: isHttps
+        tlsVerify: isHttps,
+        roots: roots
       };
 
       // 3. Persist node configuration to servers.yaml

@@ -17,6 +17,7 @@ export interface ServerConnectionAgent {
   vaultSecret?: string;
   secretRef?: string; // legacy alias
   tlsVerify?: boolean;
+  roots?: string[];
 }
 
 export interface ServerConnection {

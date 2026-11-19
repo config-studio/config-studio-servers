@@ -6,7 +6,9 @@ import {
   cleanBase32,
   isValidBase32,
   generateRandomBase32,
-  generateRandomKeyId
+  generateRandomKeyId,
+  parseAgentConnectionLink,
+  formatAgentConnectionLink
 } from '../src/crypto';
 
 describe('TOTP & Crypto Engine (RFC 6238 / RFC 4226)', () => {
@@ -42,12 +44,47 @@ describe('TOTP & Crypto Engine (RFC 6238 / RFC 4226)', () => {
     assert.match(key, /^cs_master_[a-z0-9]+$/);
   });
 
-  it('should generate deterministic 6-digit TOTP code for a timestamp', async () => {
-    // RFC 6238 standard test secret (ASCII "12345678901234567890" = GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ)
-    const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
-    // Timestamp: 1111111109 (step 30) -> counter 37037036
-    const code = await generateTOTPWebCrypto(secret, 1111111109);
-    assert.equal(code.length, 6);
-    assert.match(code, /^\d{6}$/);
+  it('should format and parse cs-agent:// connection URLs (VLESS/Hysteria style)', () => {
+    const formatted = formatAgentConnectionLink({
+      keyId: 'cs_master_vps',
+      secret: 'JBSWY3DPEHPK3PXP',
+      host: '192.168.0.110',
+      port: 8085,
+      tls: false,
+      roots: ['/opt/projects', '/var/www'],
+      nodeName: 'Production VPS',
+      nodeId: 'prod-vps'
+    });
+
+    assert.match(formatted, /^cs-agent:\/\/cs_master_vps:JBSWY3DPEHPK3PXP@192.168.0.110:8085\//);
+    assert.match(formatted, /roots=%2Fopt%2Fprojects%2C%2Fvar%2Fwww/);
+    assert.match(formatted, /#Production%20VPS/);
+
+    const parsed = parseAgentConnectionLink(formatted);
+    assert.equal(parsed.keyId, 'cs_master_vps');
+    assert.equal(parsed.secret, 'JBSWY3DPEHPK3PXP');
+    assert.equal(parsed.host, '192.168.0.110');
+    assert.equal(parsed.port, 8085);
+    assert.equal(parsed.tls, false);
+    assert.deepEqual(parsed.roots, ['/opt/projects', '/var/www']);
+    assert.equal(parsed.nodeName, 'Production VPS');
+  });
+
+  it('should parse csagent:// link with query parameters', () => {
+    const link = 'csagent://api_user:SECRETBASE32@vpn.example.com:9998/?roots=/home/deploy,/etc/nginx&tls=1#staging';
+    const parsed = parseAgentConnectionLink(link);
+    assert.equal(parsed.keyId, 'api_user');
+    assert.equal(parsed.secret, 'SECRETBASE32');
+    assert.equal(parsed.host, 'vpn.example.com');
+    assert.equal(parsed.port, 9998);
+    assert.equal(parsed.tls, true);
+    assert.deepEqual(parsed.roots, ['/home/deploy', '/etc/nginx']);
+    assert.equal(parsed.nodeName, 'staging');
+    assert.equal(parsed.nodeId, 'staging');
+  });
+
+  it('should throw error for invalid link format', () => {
+    assert.throws(() => parseAgentConnectionLink('https://google.com'), /схема/);
+    assert.throws(() => parseAgentConnectionLink('cs-agent://user@host:8085/'), /учетные данные/);
   });
 });

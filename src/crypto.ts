@@ -40,6 +40,110 @@ export function generateRandomKeyId(prefix: string = 'cs_key'): string {
   return `${prefix}_${rand}`;
 }
 
+export interface AgentConnectionLinkInfo {
+  keyId: string;
+  secret: string;
+  host: string;
+  port: number;
+  tls: boolean;
+  roots: string[];
+  nodeName: string;
+  nodeId: string;
+}
+
+export function parseAgentConnectionLink(raw: string): AgentConnectionLinkInfo {
+  let link = (raw || '').trim();
+  if (!link) {
+    throw new Error('Пустая ссылка подключения');
+  }
+
+  // Normalise scheme
+  if (link.startsWith('csagent://')) {
+    link = 'cs-agent://' + link.slice('csagent://'.length);
+  } else if (link.startsWith('cs://agent/')) {
+    link = 'cs-agent://' + link.slice('cs://agent/'.length);
+  } else if (!link.startsWith('cs-agent://')) {
+    throw new Error('Некорректная схема: ссылка должна начинаться с cs-agent://');
+  }
+
+  // Use URL parser by replacing custom scheme with dummy http so standard URL API parses userinfo
+  const httpEquivalent = 'http://' + link.slice('cs-agent://'.length);
+  const u = new URL(httpEquivalent);
+
+  const keyId = decodeURIComponent(u.username || '');
+  const secret = decodeURIComponent(u.password || '');
+  if (!keyId || !secret) {
+    throw new Error('В ссылке отсутствуют учетные данные (формат: cs-agent://keyId:secret@host:port)');
+  }
+
+  const host = u.hostname;
+  if (!host) {
+    throw new Error('В ссылке отсутствует хост или IP-адрес');
+  }
+
+  const port = u.port ? parseInt(u.port, 10) : 8085;
+  const tls = u.searchParams.get('tls') === '1' || u.searchParams.get('tls') === 'true';
+
+  const rootsRaw = u.searchParams.get('roots') || u.searchParams.get('paths') || '';
+  const roots = rootsRaw ? rootsRaw.split(',').map(r => r.trim()).filter(Boolean) : [];
+
+  let nodeName = u.hash ? decodeURIComponent(u.hash.replace(/^#/, '')) : '';
+  if (!nodeName) {
+    nodeName = u.searchParams.get('name') || host;
+  }
+
+  let nodeId = u.searchParams.get('id') || '';
+  if (!nodeId) {
+    nodeId = nodeName
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  return {
+    keyId,
+    secret: secret.toUpperCase(),
+    host,
+    port,
+    tls,
+    roots,
+    nodeName,
+    nodeId: nodeId || 'agent-node'
+  };
+}
+
+export function formatAgentConnectionLink(info: {
+  keyId: string;
+  secret: string;
+  host: string;
+  port: number;
+  tls?: boolean;
+  roots?: string[];
+  nodeName?: string;
+  nodeId?: string;
+}): string {
+  const host = info.host || '127.0.0.1';
+  const port = info.port || 8085;
+  const keyId = encodeURIComponent(info.keyId || 'cs_key');
+  const secret = encodeURIComponent(cleanBase32(info.secret));
+
+  const u = new URL(`http://${host}:${port}/`);
+  if (info.roots && info.roots.length > 0) {
+    u.searchParams.set('roots', info.roots.join(','));
+  }
+  if (info.tls) {
+    u.searchParams.set('tls', '1');
+  }
+  if (info.nodeId) {
+    u.searchParams.set('id', info.nodeId);
+  }
+  const name = info.nodeName || host;
+
+  const queryPart = u.search ? u.search : '';
+  return `cs-agent://${keyId}:${secret}@${host}:${port}/${queryPart}#${encodeURIComponent(name)}`;
+}
+
 export function base32Decode(str: string): Uint8Array {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const cleanStr = (str || '').toUpperCase().replace(/=+$/, '');
