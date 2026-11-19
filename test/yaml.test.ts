@@ -37,4 +37,19 @@ describe('Server & YAML Validator', () => {
     } as any);
     assert.equal(res.valid, true);
   });
+
+  it('should accept valid manual agent node with vaultSecret and port', () => {
+    const res = validateServerConfig({
+      id: 'srv-manual-agent',
+      name: 'Manual Agent',
+      connection: {
+        agent: {
+          enabled: true,
+          port: 8085,
+          vaultSecret: 'agent:srv-manual-agent'
+        }
+      }
+    } as any);
+    assert.equal(res.valid, true);
+  });
 });

@@ -5,6 +5,7 @@ import { getAgentAuthToken } from './crypto';
 import { syncSSHHost } from './hostSync';
 import { apiFetch, fetchServers, pingServer } from './api';
 import { showToast } from './ui/domUtils';
+import { openManualAgentModal } from './ui/manualAgentModal';
 
 /**
  * Fleet Orchestration Controller
@@ -90,7 +91,13 @@ export class FleetController {
   public async connectAgent(server: ServerNode): Promise<void> {
     if (!server.connection || !server.connection.agent) return;
     const agentCfg = server.connection.agent;
-    const url = agentCfg.url;
+    let url = agentCfg.url;
+    if (!url) {
+      const fallbackHost = server.connection?.ssh?.host || server.host || server.sshHostRef;
+      if (fallbackHost) {
+        url = `http://${fallbackHost}:${agentCfg.port || 8085}`;
+      }
+    }
     if (!url) {
       showToast(`URL агента не указан для ${server.name}`, 'warning');
       return;
@@ -179,6 +186,10 @@ export class FleetController {
     }
 
     showToast(`Запуск SSH шелла к ${server.name}...`, 'info');
+  }
+
+  public async openManualAgentModal(server?: ServerNode): Promise<void> {
+    return openManualAgentModal(server);
   }
 
   public clearTotpTimer(): void {

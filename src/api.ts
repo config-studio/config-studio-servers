@@ -92,3 +92,53 @@ export async function installAgent(
     body: JSON.stringify(payload)
   });
 }
+
+export async function saveVaultSecret(item: {
+  id: string;
+  title: string;
+  type: string;
+  scope?: string;
+  pluginId?: string;
+  value: string;
+}): Promise<any> {
+  if (typeof window !== 'undefined' && window.ConfigStudio?.secrets?.set) {
+    try {
+      await window.ConfigStudio.secrets.set(item as any);
+      return { success: true };
+    } catch (err) {
+      console.warn('[saveVaultSecret] Bridge set failed, falling back to REST API:', err);
+    }
+  }
+
+  return await apiFetch('/api/secrets/save', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      scope: item.scope || 'shared',
+      pluginId: item.pluginId || 'servers',
+      value: item.value
+    })
+  });
+}
+
+export async function getVaultSecret(id: string): Promise<any> {
+  if (!id) return null;
+  if (typeof window !== 'undefined' && window.ConfigStudio?.secrets?.get) {
+    try {
+      const val = await window.ConfigStudio.secrets.get(id);
+      if (val) return val;
+    } catch (_) {}
+  }
+
+  try {
+    const res = await apiFetch<{ id: string; value: string }>('/api/secrets/get', {
+      method: 'POST',
+      body: JSON.stringify({ id })
+    });
+    return res && res.value ? res.value : null;
+  } catch (_) {
+    return null;
+  }
+}

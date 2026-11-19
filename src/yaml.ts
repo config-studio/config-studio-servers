@@ -24,14 +24,18 @@ export function validateServerConfig(server: Partial<ServerNode>): { valid: bool
     return { valid: false, error: 'ID узла должен содержать латинские буквы, цифры, дефис или подчеркивание' };
   }
 
-  // Node must have either sshHostRef, or direct SSH host, or direct legacy host, or agent URL
+  // Node must have either sshHostRef, or direct SSH host, or direct legacy host, or agent config
   const hasHostRef = Boolean(server.sshHostRef && server.sshHostRef.trim());
   const hasDirectSsh = Boolean(server.connection?.ssh?.host && server.connection.ssh.host.trim());
   const hasLegacyHost = Boolean(server.host && server.host.trim());
   const hasAgentUrl = Boolean(server.connection?.agent?.url && server.connection.agent.url.trim());
+  const hasAgentConfig = Boolean(
+    server.connection?.agent?.enabled &&
+    (server.connection.agent.url || server.connection.agent.vaultSecret || server.connection.agent.secretRef)
+  );
 
-  if (server.id !== 'localhost' && !hasHostRef && !hasDirectSsh && !hasLegacyHost && !hasAgentUrl) {
-    return { valid: false, error: 'Необходимо указать хост (привязка к ядру, параметры SSH или URL агента)' };
+  if (server.id !== 'localhost' && !hasHostRef && !hasDirectSsh && !hasLegacyHost && !hasAgentUrl && !hasAgentConfig) {
+    return { valid: false, error: 'Необходимо указать хост (привязка к ядру, параметры SSH или параметры агента)' };
   }
 
   return { valid: true };

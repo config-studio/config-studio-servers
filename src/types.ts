@@ -16,6 +16,7 @@ export interface ServerConnectionAgent {
   port?: number;
   vaultSecret?: string;
   secretRef?: string; // legacy alias
+  tlsVerify?: boolean;
 }
 
 export interface ServerConnection {
@@ -118,6 +119,8 @@ export interface ConfigStudioSshBridge {
 
 export interface ConfigStudioSecretsBridge {
   get?: (id: string) => Promise<any>;
+  set?: (item: any) => Promise<any>;
+  delete?: (id: string) => Promise<any>;
   list?: () => Promise<VaultSecret[]>;
 }
 

@@ -7,6 +7,7 @@ import { fetchCoreHosts, fetchVaultSecrets } from '../hostSync';
 import { saveServer, deleteServer } from '../api';
 import { validateServerConfig } from '../yaml';
 import { openInstallAgentDialog } from './agentInstallModal';
+import { openManualAgentModal } from './manualAgentModal';
 
 /**
  * Add / Edit Server Modal Dialog
@@ -156,11 +157,16 @@ export async function openEditModal(server: ServerNode | null): Promise<void> {
             <div class="cs-fleet-form-help" id="srv-agent-url-hint" style="color:#38bdf8;margin:0;font-size:11.5px;">
               Динамический URL: http://{host}:${srv.connection?.agent?.port || 8085}
             </div>
-            ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
-              <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;">
-                ${ICONS.agent} <span>1-Click Установить агент</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-manual-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;" title="Ручная настройка IP, порта, API Key и TOTP секрета">
+                ${ICONS.key} <span>Ручная настройка...</span>
               </button>
-            ` : ''}
+              ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
+                <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;">
+                  ${ICONS.agent} <span>1-Click Установить агент</span>
+                </button>
+              ` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -441,6 +447,15 @@ export async function openEditModal(server: ServerNode | null): Promise<void> {
         delete srv.connection.agent.secretRef;
       });
     }
+  }
+
+  // Manual Agent Configuration button
+  const manualAgentBtn = modal.querySelector('#cs-modal-manual-agent-btn');
+  if (manualAgentBtn) {
+    manualAgentBtn.addEventListener('click', () => {
+      closeModal();
+      openManualAgentModal(srv);
+    });
   }
 
   // 1-Click Install Agent button

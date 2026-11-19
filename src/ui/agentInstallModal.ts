@@ -3,6 +3,7 @@ import { fleet } from '../fleet';
 import { ICONS } from '../constants';
 import { escapeHtml, showToast } from './domUtils';
 import { installAgent } from '../api';
+import { openManualAgentModal } from './manualAgentModal';
 
 /**
  * 1-Click Remote Agent Installer / Upgrader Dialog
@@ -58,9 +59,16 @@ export function openInstallAgentDialog(srv: ServerNode, isUpgrade: boolean = fal
         </div>
       </div>
 
-      <div class="cs-fleet-checkbox-row" style="margin-bottom:14px;">
+      <div class="cs-fleet-checkbox-row" style="margin-bottom:10px;">
         <input type="checkbox" id="cs-install-sudo" checked />
         <label for="cs-install-sudo">Использовать sudo для привилегированных команд</label>
+      </div>
+
+      <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:8px;padding:8px 12px;font-size:11.5px;">
+        <span style="color:var(--cs-srv-text-muted);">Агент уже запущен или нет прямого SSH-доступа?</span>
+        <button type="button" id="cs-install-manual-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;text-decoration:underline;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;">
+          <span>Ручная настройка (IP, порт, TOTP) →</span>
+        </button>
       </div>
 
       <!-- Terminal Logs Window -->
@@ -120,6 +128,10 @@ export function openInstallAgentDialog(srv: ServerNode, isUpgrade: boolean = fal
 
   modal.querySelector('.cs-fleet-modal-close')?.addEventListener('click', closeModal);
   modal.querySelector('#cs-install-cancel-btn')?.addEventListener('click', closeModal);
+  modal.querySelector('#cs-install-manual-btn')?.addEventListener('click', () => {
+    closeModal();
+    openManualAgentModal(srv);
+  });
 
   const runBtn = modal.querySelector('#cs-install-run-btn') as HTMLButtonElement;
   const termEl = modal.querySelector('#cs-install-terminal') as HTMLElement;

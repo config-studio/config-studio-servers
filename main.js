@@ -33,6 +33,7 @@ var ConfigStudioServersPlugin = (() => {
     TOTP_STEP_SECONDS: () => TOTP_STEP_SECONDS,
     apiFetch: () => apiFetch,
     base32Decode: () => base32Decode,
+    cleanBase32: () => cleanBase32,
     createServerCard: () => createServerCard,
     deleteServer: () => deleteServer,
     escapeHtml: () => escapeHtml,
@@ -42,13 +43,18 @@ var ConfigStudioServersPlugin = (() => {
     fetchVaultSecrets: () => fetchVaultSecrets,
     fleet: () => fleet,
     formatYamlSummary: () => formatYamlSummary,
+    generateRandomBase32: () => generateRandomBase32,
+    generateRandomKeyId: () => generateRandomKeyId,
     generateTOTPWebCrypto: () => generateTOTPWebCrypto,
     getAgentAuthToken: () => getAgentAuthToken,
+    getVaultSecret: () => getVaultSecret,
     initServersPlugin: () => initServersPlugin,
     installAgent: () => installAgent,
+    isValidBase32: () => isValidBase32,
     openBatchInstallModal: () => openBatchInstallModal,
     openEditModal: () => openEditModal,
     openInstallAgentDialog: () => openInstallAgentDialog,
+    openManualAgentModal: () => openManualAgentModal,
     openRawYAMLModal: () => openRawYAMLModal,
     openSendToFleetModal: () => openSendToFleetModal,
     openTokensModal: () => openTokensModal,
@@ -58,6 +64,7 @@ var ConfigStudioServersPlugin = (() => {
     sanitizeServerId: () => sanitizeServerId,
     saveRawYaml: () => saveRawYaml,
     saveServer: () => saveServer,
+    saveVaultSecret: () => saveVaultSecret,
     showToast: () => showToast,
     store: () => store,
     syncSSHHost: () => syncSSHHost,
@@ -199,6 +206,35 @@ var ConfigStudioServersPlugin = (() => {
   };
 
   // src/crypto.ts
+  function cleanBase32(secret) {
+    if (!secret) return "";
+    return secret.toUpperCase().replace(/[^A-Z2-7]/g, "");
+  }
+  function isValidBase32(secret) {
+    const clean = cleanBase32(secret);
+    return clean.length >= 16;
+  }
+  function generateRandomBase32(length = 24) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let result = "";
+    const cryptoObj = typeof window !== "undefined" && window.crypto ? window.crypto : globalThis.crypto;
+    if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+      const bytes = new Uint8Array(length);
+      cryptoObj.getRandomValues(bytes);
+      for (let i = 0; i < length; i++) {
+        result += alphabet[bytes[i] % alphabet.length];
+      }
+    } else {
+      for (let i = 0; i < length; i++) {
+        result += alphabet[Math.floor(Math.random() * alphabet.length)];
+      }
+    }
+    return result;
+  }
+  function generateRandomKeyId(prefix = "cs_key") {
+    const rand = Math.random().toString(36).slice(2, 8);
+    return `${prefix}_${rand}`;
+  }
   function base32Decode(str) {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     const cleanStr = (str || "").toUpperCase().replace(/=+$/, "");
@@ -488,6 +524,46 @@ var ConfigStudioServersPlugin = (() => {
       body: JSON.stringify(payload)
     });
   }
+  async function saveVaultSecret(item) {
+    if (typeof window !== "undefined" && window.ConfigStudio?.secrets?.set) {
+      try {
+        await window.ConfigStudio.secrets.set(item);
+        return { success: true };
+      } catch (err) {
+        console.warn("[saveVaultSecret] Bridge set failed, falling back to REST API:", err);
+      }
+    }
+    return await apiFetch("/api/secrets/save", {
+      method: "POST",
+      body: JSON.stringify({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        scope: item.scope || "shared",
+        pluginId: item.pluginId || "servers",
+        value: item.value
+      })
+    });
+  }
+  async function getVaultSecret(id) {
+    if (!id) return null;
+    if (typeof window !== "undefined" && window.ConfigStudio?.secrets?.get) {
+      try {
+        const val = await window.ConfigStudio.secrets.get(id);
+        if (val) return val;
+      } catch (_) {
+      }
+    }
+    try {
+      const res = await apiFetch("/api/secrets/get", {
+        method: "POST",
+        body: JSON.stringify({ id })
+      });
+      return res && res.value ? res.value : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // src/ui/domUtils.ts
   function escapeHtml(str) {
@@ -514,6 +590,420 @@ var ConfigStudioServersPlugin = (() => {
     } catch (err) {
       console.warn("[Toast fallback]", msg, err);
     }
+  }
+
+  // src/yaml.ts
+  function sanitizeServerId(raw) {
+    if (!raw) return "";
+    return raw.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function validateServerConfig(server) {
+    if (!server.id || !server.id.trim()) {
+      return { valid: false, error: "ID \u0443\u0437\u043B\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u0435\u043D" };
+    }
+    const sanitizedId = sanitizeServerId(server.id);
+    if (!sanitizedId) {
+      return { valid: false, error: "ID \u0443\u0437\u043B\u0430 \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043E\u0434\u0435\u0440\u0436\u0430\u0442\u044C \u043B\u0430\u0442\u0438\u043D\u0441\u043A\u0438\u0435 \u0431\u0443\u043A\u0432\u044B, \u0446\u0438\u0444\u0440\u044B, \u0434\u0435\u0444\u0438\u0441 \u0438\u043B\u0438 \u043F\u043E\u0434\u0447\u0435\u0440\u043A\u0438\u0432\u0430\u043D\u0438\u0435" };
+    }
+    const hasHostRef = Boolean(server.sshHostRef && server.sshHostRef.trim());
+    const hasDirectSsh = Boolean(server.connection?.ssh?.host && server.connection.ssh.host.trim());
+    const hasLegacyHost = Boolean(server.host && server.host.trim());
+    const hasAgentUrl = Boolean(server.connection?.agent?.url && server.connection.agent.url.trim());
+    const hasAgentConfig = Boolean(
+      server.connection?.agent?.enabled && (server.connection.agent.url || server.connection.agent.vaultSecret || server.connection.agent.secretRef)
+    );
+    if (server.id !== "localhost" && !hasHostRef && !hasDirectSsh && !hasLegacyHost && !hasAgentUrl && !hasAgentConfig) {
+      return { valid: false, error: "\u041D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E \u0443\u043A\u0430\u0437\u0430\u0442\u044C \u0445\u043E\u0441\u0442 (\u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u043A \u044F\u0434\u0440\u0443, \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B SSH \u0438\u043B\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0430\u0433\u0435\u043D\u0442\u0430)" };
+    }
+    return { valid: true };
+  }
+  function formatYamlSummary(server) {
+    const parts = [`ID: ${server.id}`, `\u0418\u043C\u044F: ${server.name}`];
+    if (server.sshHostRef) parts.push(`Core Host: ${server.sshHostRef}`);
+    if (server.connection?.ssh?.host) parts.push(`SSH: ${server.connection.ssh.host}`);
+    if (server.connection?.agent?.enabled) parts.push(`Agent: port ${server.connection.agent.port || 8085}`);
+    if (server.group) parts.push(`\u0413\u0440\u0443\u043F\u043F\u0430: ${server.group}`);
+    return parts.join(" | ");
+  }
+
+  // src/ui/manualAgentModal.ts
+  async function openManualAgentModal(srv, onSaved) {
+    const isNew = !srv || !srv.id;
+    const initialId = srv?.id || "";
+    const initialName = srv?.name || "";
+    let initialHost = "";
+    let initialPort = srv?.connection?.agent?.port || DEFAULT_AGENT_PORT;
+    let initialHttps = false;
+    if (srv?.connection?.agent?.url) {
+      initialHttps = srv.connection.agent.url.startsWith("https://");
+      const match = srv.connection.agent.url.match(/^https?:\/\/([^:/]+)(?::(\d+))?/i);
+      if (match) {
+        initialHost = match[1];
+        if (match[2]) initialPort = parseInt(match[2], 10);
+      }
+    }
+    if (!initialHost) {
+      initialHost = srv?.connection?.ssh?.host || srv?.host || srv?.sshHostRef || "";
+    }
+    const initialVaultSecretId = srv?.connection?.agent?.vaultSecret || srv?.connection?.agent?.secretRef || (initialId ? `agent:${initialId}` : "");
+    let existingKeyId = "cs_agent_master";
+    let existingSecret = "";
+    if (initialVaultSecretId) {
+      try {
+        const rawVal = await getVaultSecret(initialVaultSecretId);
+        if (rawVal) {
+          if (typeof rawVal === "object") {
+            if (rawVal.keyId) existingKeyId = rawVal.keyId;
+            if (rawVal.secret || rawVal.value) existingSecret = rawVal.secret || rawVal.value;
+          } else if (typeof rawVal === "string") {
+            try {
+              const parsed = JSON.parse(rawVal);
+              if (parsed.keyId) existingKeyId = parsed.keyId;
+              if (parsed.secret || parsed.value) existingSecret = parsed.secret || parsed.value;
+            } catch (_) {
+              if (rawVal.includes(":")) {
+                const parts = rawVal.split(":");
+                existingKeyId = parts[0];
+                existingSecret = parts[1];
+              } else if (isValidBase32(rawVal)) {
+                existingSecret = rawVal.trim();
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[openManualAgentModal] Failed to load existing secret:", err);
+      }
+    }
+    const overlay = document.createElement("div");
+    overlay.className = "cs-fleet-modal-overlay";
+    const modal = document.createElement("div");
+    modal.className = "cs-fleet-modal-content cs-fleet-modal-lg";
+    modal.innerHTML = `
+    <div class="cs-fleet-modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span>${ICONS.agent}</span>
+        <span style="font-weight:700;font-size:14px;">
+          ${isNew ? "\u0420\u0443\u0447\u043D\u0430\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430 Remote Agent" : `\u0420\u0443\u0447\u043D\u0430\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430 Remote Agent \u2014 ${escapeHtml(srv.name || srv.id)}`}
+        </span>
+      </div>
+      <button class="cs-fleet-modal-close">${ICONS.close}</button>
+    </div>
+
+    <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
+      <!-- Informational banner -->
+      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:11.5px;color:var(--cs-srv-text-primary);line-height:1.5;">
+        <div><b>\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u044F\u043C\u043E\u0433\u043E \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F:</b> \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A \u0434\u0435\u043C\u043E\u043D\u0443 Remote Agent \u043F\u043E HTTP/HTTPS \u0431\u0435\u0437 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F SSH.</div>
+        <div style="margin-top:4px;color:var(--cs-srv-text-muted);">
+          \u041A\u043B\u044E\u0447 API \u0438 \u0441\u0435\u043A\u0440\u0435\u0442 TOTP \u0448\u0438\u0444\u0440\u0443\u044E\u0442\u0441\u044F \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u0442\u0441\u044F \u0432 <b>Core Vault</b> (<code style="color:var(--cs-srv-accent);">agent_credentials</code>). \u0412 \u0444\u0430\u0439\u043B\u0435 <code style="color:var(--cs-srv-accent);">servers.yaml</code> \u0444\u043E\u0440\u043C\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u0437\u0430\u0449\u0438\u0449\u0435\u043D\u043D\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u0432\u0438\u0434\u0430 <code style="color:var(--cs-srv-accent);">vault_secret: agent:&lt;id&gt;</code> \u0431\u0435\u0437 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0445 \u043F\u0430\u0440\u043E\u043B\u0435\u0439.
+        </div>
+      </div>
+
+      <!-- Server Identity (editable if new) -->
+      ${isNew ? `
+        <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px;">
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">ID \u0443\u0437\u043B\u0430 *</label>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-node-id" value="${escapeHtml(initialId)}" placeholder="agent-vps-01" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u0418\u043C\u044F \u0443\u0437\u043B\u0430</label>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-node-name" value="${escapeHtml(initialName)}" placeholder="Production VPS Agent" />
+          </div>
+        </div>
+      ` : `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:8px;padding:8px 12px;">
+          <div style="font-size:12px;">
+            <span style="color:var(--cs-srv-text-muted);">\u0423\u0437\u0435\u043B:</span> <b>${escapeHtml(srv.name || srv.id)}</b> <span style="font-family:monospace;color:var(--cs-srv-accent);font-size:11px;">(${escapeHtml(srv.id)})</span>
+          </div>
+          <input type="hidden" id="cs-manual-node-id" value="${escapeHtml(srv.id)}" />
+          <input type="hidden" id="cs-manual-node-name" value="${escapeHtml(srv.name || srv.id)}" />
+        </div>
+      `}
+
+      <!-- Network parameters -->
+      <div style="background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;">
+        <div style="font-size:11.5px;font-weight:600;margin-bottom:10px;color:var(--cs-srv-text-primary);display:flex;align-items:center;gap:6px;">
+          <span>\u{1F310}</span>
+          <span>\u0421\u0435\u0442\u0435\u0432\u043E\u0439 \u0430\u0434\u0440\u0435\u0441 \u0430\u0433\u0435\u043D\u0442\u0430</span>
+        </div>
+        <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 2fr) 110px minmax(0, 1fr); gap: 10px; align-items: start;">
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u0425\u043E\u0441\u0442 / IP-\u0430\u0434\u0440\u0435\u0441 \u0430\u0433\u0435\u043D\u0442\u0430 *</label>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-host" value="${escapeHtml(initialHost)}" placeholder="192.168.0.110 \u0438\u043B\u0438 agent.domain.com" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u041F\u043E\u0440\u0442 \u0430\u0433\u0435\u043D\u0442\u0430</label>
+            <input type="number" class="cs-fleet-form-input" id="cs-manual-port" min="1" max="65535" value="${initialPort}" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B</label>
+            <div class="cs-fleet-checkbox-row" style="margin-top:6px;margin-bottom:0;">
+              <input type="checkbox" id="cs-manual-https" ${initialHttps ? "checked" : ""} />
+              <label for="cs-manual-https" style="font-size:11.5px;cursor:pointer;">HTTPS (TLS)</label>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11.5px;color:#38bdf8;font-family:monospace;" id="cs-manual-url-hint">
+          URL: ${initialHttps ? "https" : "http"}://${initialHost || "127.0.0.1"}:${initialPort}
+        </div>
+      </div>
+
+      <!-- Authentication & Vault -->
+      <div style="background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:10px;padding:14px;">
+        <div style="font-size:11.5px;font-weight:600;margin-bottom:10px;color:var(--cs-srv-text-primary);display:flex;align-items:center;gap:6px;">
+          <span>\u{1F511}</span>
+          <span>\u041A\u043B\u044E\u0447\u0438 \u0430\u0443\u0442\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438 \u0438 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0435 Core Vault</span>
+        </div>
+
+        <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: start;">
+          <!-- API Key / Key ID -->
+          <div class="cs-fleet-form-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <label class="cs-fleet-form-label" style="margin-bottom:0;">API Key (Key ID) *</label>
+              <button type="button" id="cs-manual-gen-key-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">\u{1F3B2} \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C</button>
+            </div>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_agent_master" style="font-family:monospace;" />
+            <div class="cs-fleet-form-help">\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u043A\u043B\u044E\u0447\u0430 \u0438\u0437 config.yaml \u0430\u0433\u0435\u043D\u0442\u0430</div>
+          </div>
+
+          <!-- TOTP Secret -->
+          <div class="cs-fleet-form-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <label class="cs-fleet-form-label" style="margin-bottom:0;">TOTP \u0421\u0435\u043A\u0440\u0435\u0442 (Base32) *</label>
+              <button type="button" id="cs-manual-gen-secret-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">\u{1F3B2} \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C Base32</button>
+            </div>
+            <div style="position:relative;display:flex;align-items:center;">
+              <input type="password" class="cs-fleet-form-input" id="cs-manual-totp-secret" value="${escapeHtml(existingSecret)}" placeholder="JBSWY3DPEHPK3PXP..." style="font-family:monospace;padding-right:32px;" />
+              <button type="button" id="cs-manual-toggle-secret-btn" title="\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C/\u0441\u043A\u0440\u044B\u0442\u044C \u0441\u0435\u043A\u0440\u0435\u0442" style="position:absolute;right:8px;background:none;border:none;color:var(--cs-srv-text-muted);cursor:pointer;padding:2px;font-size:13px;">\u{1F441}</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+              <div class="cs-fleet-form-help">Base32 \u0441\u0435\u043A\u0440\u0435\u0442 RFC 6238 \u0434\u043B\u044F \u0434\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u043E\u0439 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0442\u043E\u043A\u0435\u043D\u0430</div>
+              <div id="cs-manual-totp-status" style="font-size:10.5px;color:var(--cs-srv-text-muted);"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vault Secret Reference ID -->
+        <div class="cs-fleet-form-group" style="margin-top:12px;">
+          <label class="cs-fleet-form-label">\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u0441\u0435\u043A\u0440\u0435\u0442\u0430 \u0432 Core Vault</label>
+          <input type="text" class="cs-fleet-form-input" id="cs-manual-vault-id" value="${escapeHtml(initialVaultSecretId || `agent:${initialId || "node"}`)}" style="font-family:monospace;background:rgba(0,0,0,0.2);" />
+          <div class="cs-fleet-form-help" style="margin-top:4px;color:var(--cs-srv-accent);">
+            \u2713 \u0412 <code>servers.yaml</code> \u0437\u0430\u043F\u0438\u0448\u0435\u0442\u0441\u044F \u0430\u043A\u043A\u0443\u0440\u0430\u0442\u043D\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430: <span id="cs-manual-yaml-preview" style="font-weight:600;">vault_secret: ${escapeHtml(initialVaultSecretId || `agent:${initialId || "node"}`)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test Connection & Live Diagnostic Block -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--cs-srv-bg-base);border:1px solid var(--cs-srv-border);border-radius:8px;padding:10px 14px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;" id="cs-manual-test-status">
+          <span style="color:var(--cs-srv-text-muted);">\u041D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435\xBB \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0441\u0432\u044F\u0437\u0438 \u0438 TOTP \u0442\u043E\u043A\u0435\u043D\u0430...</span>
+        </div>
+        <button type="button" class="cs-fleet-btn-secondary" id="cs-manual-test-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
+          <span>\u26A1 \u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="cs-fleet-modal-footer">
+      <div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="cs-fleet-btn-secondary" id="cs-manual-cancel-btn">\u041E\u0442\u043C\u0435\u043D\u0430</button>
+        <button class="cs-fleet-btn-primary" id="cs-manual-save-btn" style="display:inline-flex;align-items:center;gap:6px;">
+          <span>\u{1F4BE} \u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C \u043A Vault</span>
+        </button>
+      </div>
+    </div>
+  `;
+    function closeModal() {
+      overlay.remove();
+    }
+    modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
+    modal.querySelector("#cs-manual-cancel-btn")?.addEventListener("click", closeModal);
+    const nodeIdInput = modal.querySelector("#cs-manual-node-id");
+    const nodeNameInput = modal.querySelector("#cs-manual-node-name");
+    const hostInput = modal.querySelector("#cs-manual-host");
+    const portInput = modal.querySelector("#cs-manual-port");
+    const httpsCheckbox = modal.querySelector("#cs-manual-https");
+    const urlHintEl = modal.querySelector("#cs-manual-url-hint");
+    const keyIdInput = modal.querySelector("#cs-manual-key-id");
+    const totpSecretInput = modal.querySelector("#cs-manual-totp-secret");
+    const vaultIdInput = modal.querySelector("#cs-manual-vault-id");
+    const yamlPreviewEl = modal.querySelector("#cs-manual-yaml-preview");
+    const totpStatusEl = modal.querySelector("#cs-manual-totp-status");
+    const toggleSecretBtn = modal.querySelector("#cs-manual-toggle-secret-btn");
+    const genKeyBtn = modal.querySelector("#cs-manual-gen-key-btn");
+    const genSecretBtn = modal.querySelector("#cs-manual-gen-secret-btn");
+    const testBtn = modal.querySelector("#cs-manual-test-btn");
+    const testStatusEl = modal.querySelector("#cs-manual-test-status");
+    const saveBtn = modal.querySelector("#cs-manual-save-btn");
+    function updateLivePreviews() {
+      const isHttps = httpsCheckbox.checked;
+      const proto = isHttps ? "https" : "http";
+      const host = hostInput.value.trim() || "127.0.0.1";
+      const port = portInput.value.trim() || "8085";
+      urlHintEl.textContent = `URL: ${proto}://${host}:${port}`;
+      const currentId = nodeIdInput ? sanitizeServerId(nodeIdInput.value) : initialId;
+      if (isNew && currentId && (!vaultIdInput.dataset.userEdited || vaultIdInput.value === "")) {
+        vaultIdInput.value = `agent:${currentId}`;
+      }
+      const vaultRef = vaultIdInput.value.trim() || `agent:${currentId || "node"}`;
+      yamlPreviewEl.textContent = `vault_secret: ${vaultRef}`;
+      const secret = cleanBase32(totpSecretInput.value);
+      if (!secret) {
+        totpStatusEl.textContent = "";
+      } else if (isValidBase32(secret)) {
+        totpStatusEl.textContent = `\u2713 Base32 (${secret.length} \u0441\u0438\u043C\u0432.)`;
+        totpStatusEl.style.color = "#10b981";
+      } else {
+        totpStatusEl.textContent = `\u26A0 \u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 (\u043C\u0438\u043D. 16 \u0441\u0438\u043C\u0432.)`;
+        totpStatusEl.style.color = "#f59e0b";
+      }
+    }
+    hostInput.addEventListener("input", updateLivePreviews);
+    portInput.addEventListener("input", updateLivePreviews);
+    httpsCheckbox.addEventListener("change", updateLivePreviews);
+    nodeIdInput?.addEventListener("input", updateLivePreviews);
+    totpSecretInput.addEventListener("input", updateLivePreviews);
+    vaultIdInput.addEventListener("input", () => {
+      vaultIdInput.dataset.userEdited = "true";
+      updateLivePreviews();
+    });
+    let secretVisible = false;
+    toggleSecretBtn.addEventListener("click", () => {
+      secretVisible = !secretVisible;
+      totpSecretInput.type = secretVisible ? "text" : "password";
+      toggleSecretBtn.textContent = secretVisible ? "\u{1F512}" : "\u{1F441}";
+    });
+    genKeyBtn.addEventListener("click", () => {
+      keyIdInput.value = generateRandomKeyId("cs_master");
+      showToast("\u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D \u043D\u043E\u0432\u044B\u0439 Key ID", "info");
+    });
+    genSecretBtn.addEventListener("click", () => {
+      totpSecretInput.value = generateRandomBase32(24);
+      updateLivePreviews();
+      showToast("\u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D \u043D\u0430\u0434\u0435\u0436\u043D\u044B\u0439 24-\u0441\u0438\u043C\u0432\u043E\u043B\u044C\u043D\u044B\u0439 Base32 \u0441\u0435\u043A\u0440\u0435\u0442", "info");
+    });
+    updateLivePreviews();
+    testBtn.addEventListener("click", async () => {
+      const host = hostInput.value.trim();
+      const port = parseInt(portInput.value.trim(), 10) || DEFAULT_AGENT_PORT;
+      const isHttps = httpsCheckbox.checked;
+      const keyId = keyIdInput.value.trim();
+      const secret = cleanBase32(totpSecretInput.value);
+      if (!host) {
+        testStatusEl.innerHTML = `<span style="color:#ef4444;">\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0445\u043E\u0441\u0442 \u0438\u043B\u0438 IP \u0430\u0433\u0435\u043D\u0442\u0430</span>`;
+        return;
+      }
+      testBtn.disabled = true;
+      testStatusEl.innerHTML = `<span style="color:#38bdf8;">\u23F3 \u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0441\u0432\u044F\u0437\u0438 \u0438 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F TOTP \u043A\u043E\u0434\u0430...</span>`;
+      const start = performance.now();
+      try {
+        let otp = "";
+        if (secret) {
+          otp = await generateTOTPWebCrypto(secret);
+        }
+        const tokenHeader = otp ? `Bearer ${keyId}:${otp}` : keyId ? `Bearer ${keyId}` : "";
+        const testUrl = `${isHttps ? "https" : "http"}://${host}:${port}/health`;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 3500);
+        const headers = {};
+        if (tokenHeader) headers["Authorization"] = tokenHeader;
+        const res = await fetch(testUrl, {
+          method: "GET",
+          headers,
+          signal: ctrl.signal
+        }).catch((err) => {
+          throw new Error(err.name === "AbortError" ? "\u041F\u0440\u0435\u0432\u044B\u0448\u0435\u043D \u0442\u0430\u0439\u043C\u0430\u0443\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 (3.5\u0441)" : err.message);
+        });
+        clearTimeout(timer);
+        const ms = Math.round(performance.now() - start);
+        if (res.ok) {
+          testStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">\u2713 \u041E\u043D\u043B\u0430\u0439\u043D (${ms} ms)! \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status}. TOTP \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430.</span>`;
+        } else {
+          testStatusEl.innerHTML = `<span style="color:#f59e0b;">\u26A0 \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status} (${res.statusText || "\u0421\u0442\u0430\u0442\u0443\u0441 \u043D\u0435 200"}). \u0421\u0432\u044F\u0437\u044C \u0435\u0441\u0442\u044C, \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0440\u0430\u0432\u0430 \u043A\u043B\u044E\u0447\u0430.</span>`;
+        }
+      } catch (err) {
+        testStatusEl.innerHTML = `<span style="color:#ef4444;">\u2715 \u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438: ${escapeHtml(err.message)}</span>`;
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+    saveBtn.addEventListener("click", async () => {
+      const rawId = nodeIdInput ? nodeIdInput.value.trim() : initialId;
+      const sanitizedId = sanitizeServerId(rawId);
+      const nodeName = nodeNameInput ? nodeNameInput.value.trim() || sanitizedId : initialName || sanitizedId;
+      if (!sanitizedId) {
+        showToast("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 ID \u0443\u0437\u043B\u0430", "error");
+        return;
+      }
+      const host = hostInput.value.trim();
+      if (!host) {
+        showToast("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0445\u043E\u0441\u0442 \u0438\u043B\u0438 IP-\u0430\u0434\u0440\u0435\u0441 \u0430\u0433\u0435\u043D\u0442\u0430", "error");
+        hostInput.focus();
+        return;
+      }
+      const port = parseInt(portInput.value.trim(), 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        showToast("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 \u043F\u043E\u0440\u0442 (1-65535)", "error");
+        portInput.focus();
+        return;
+      }
+      const keyId = keyIdInput.value.trim() || "cs_agent_master";
+      const secret = cleanBase32(totpSecretInput.value);
+      if (totpSecretInput.value.trim() && !isValidBase32(secret)) {
+        showToast("TOTP \u0441\u0435\u043A\u0440\u0435\u0442 \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043E\u0434\u0435\u0440\u0436\u0430\u0442\u044C \u043D\u0435 \u043C\u0435\u043D\u0435\u0435 16 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432 Base32 (A-Z, 2-7)", "error");
+        totpSecretInput.focus();
+        return;
+      }
+      const vaultSecretId = vaultIdInput.value.trim() || `agent:${sanitizedId}`;
+      const isHttps = httpsCheckbox.checked;
+      const agentUrl = `${isHttps ? "https" : "http"}://${host}:${port}`;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<span>\u23F3 \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0432 Vault...</span>`;
+      try {
+        const credsValue = JSON.stringify({
+          keyId,
+          secret
+        });
+        await saveVaultSecret({
+          id: vaultSecretId,
+          title: `Agent Credentials (${nodeName})`,
+          type: "agent_credentials",
+          scope: "shared",
+          pluginId: "servers",
+          value: credsValue
+        });
+        const targetNode = srv ? { ...srv } : {
+          id: sanitizedId,
+          name: nodeName,
+          group: "default",
+          tags: ["agent"]
+        };
+        targetNode.id = sanitizedId;
+        targetNode.name = nodeName;
+        targetNode.connection = targetNode.connection || {};
+        targetNode.connection.agent = {
+          enabled: true,
+          url: agentUrl,
+          port,
+          vaultSecret: vaultSecretId,
+          tlsVerify: isHttps
+        };
+        await saveServer(targetNode);
+        await fleet.loadAndSyncServers();
+        showToast(`\u0423\u0437\u0435\u043B ${nodeName} \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u0438 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D \u043A Vault!`, "success");
+        onSaved?.(targetNode);
+        closeModal();
+      } catch (err) {
+        console.error("[ManualAgentModal] Failed to save agent config:", err);
+        showToast(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F: ${err.message}`, "error");
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `<span>\u{1F4BE} \u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C \u043A Vault</span>`;
+      }
+    });
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
   }
 
   // src/fleet.ts
@@ -588,7 +1078,13 @@ var ConfigStudioServersPlugin = (() => {
     async connectAgent(server) {
       if (!server.connection || !server.connection.agent) return;
       const agentCfg = server.connection.agent;
-      const url = agentCfg.url;
+      let url = agentCfg.url;
+      if (!url) {
+        const fallbackHost = server.connection?.ssh?.host || server.host || server.sshHostRef;
+        if (fallbackHost) {
+          url = `http://${fallbackHost}:${agentCfg.port || 8085}`;
+        }
+      }
       if (!url) {
         showToast(`URL \u0430\u0433\u0435\u043D\u0442\u0430 \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D \u0434\u043B\u044F ${server.name}`, "warning");
         return;
@@ -658,6 +1154,9 @@ var ConfigStudioServersPlugin = (() => {
       }
       showToast(`\u0417\u0430\u043F\u0443\u0441\u043A SSH \u0448\u0435\u043B\u043B\u0430 \u043A ${server.name}...`, "info");
     }
+    async openManualAgentModal(server) {
+      return openManualAgentModal(server);
+    }
     clearTotpTimer() {
       if (this.totpInterval) {
         clearInterval(this.totpInterval);
@@ -666,37 +1165,6 @@ var ConfigStudioServersPlugin = (() => {
     }
   };
   var fleet = new FleetController();
-
-  // src/yaml.ts
-  function sanitizeServerId(raw) {
-    if (!raw) return "";
-    return raw.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "");
-  }
-  function validateServerConfig(server) {
-    if (!server.id || !server.id.trim()) {
-      return { valid: false, error: "ID \u0443\u0437\u043B\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u0435\u043D" };
-    }
-    const sanitizedId = sanitizeServerId(server.id);
-    if (!sanitizedId) {
-      return { valid: false, error: "ID \u0443\u0437\u043B\u0430 \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043E\u0434\u0435\u0440\u0436\u0430\u0442\u044C \u043B\u0430\u0442\u0438\u043D\u0441\u043A\u0438\u0435 \u0431\u0443\u043A\u0432\u044B, \u0446\u0438\u0444\u0440\u044B, \u0434\u0435\u0444\u0438\u0441 \u0438\u043B\u0438 \u043F\u043E\u0434\u0447\u0435\u0440\u043A\u0438\u0432\u0430\u043D\u0438\u0435" };
-    }
-    const hasHostRef = Boolean(server.sshHostRef && server.sshHostRef.trim());
-    const hasDirectSsh = Boolean(server.connection?.ssh?.host && server.connection.ssh.host.trim());
-    const hasLegacyHost = Boolean(server.host && server.host.trim());
-    const hasAgentUrl = Boolean(server.connection?.agent?.url && server.connection.agent.url.trim());
-    if (server.id !== "localhost" && !hasHostRef && !hasDirectSsh && !hasLegacyHost && !hasAgentUrl) {
-      return { valid: false, error: "\u041D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E \u0443\u043A\u0430\u0437\u0430\u0442\u044C \u0445\u043E\u0441\u0442 (\u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u043A \u044F\u0434\u0440\u0443, \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B SSH \u0438\u043B\u0438 URL \u0430\u0433\u0435\u043D\u0442\u0430)" };
-    }
-    return { valid: true };
-  }
-  function formatYamlSummary(server) {
-    const parts = [`ID: ${server.id}`, `\u0418\u043C\u044F: ${server.name}`];
-    if (server.sshHostRef) parts.push(`Core Host: ${server.sshHostRef}`);
-    if (server.connection?.ssh?.host) parts.push(`SSH: ${server.connection.ssh.host}`);
-    if (server.connection?.agent?.enabled) parts.push(`Agent: port ${server.connection.agent.port || 8085}`);
-    if (server.group) parts.push(`\u0413\u0440\u0443\u043F\u043F\u0430: ${server.group}`);
-    return parts.join(" | ");
-  }
 
   // src/ui/agentInstallModal.ts
   function openInstallAgentDialog(srv, isUpgrade = false) {
@@ -739,9 +1207,16 @@ var ConfigStudioServersPlugin = (() => {
         </div>
       </div>
 
-      <div class="cs-fleet-checkbox-row" style="margin-bottom:14px;">
+      <div class="cs-fleet-checkbox-row" style="margin-bottom:10px;">
         <input type="checkbox" id="cs-install-sudo" checked />
         <label for="cs-install-sudo">\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C sudo \u0434\u043B\u044F \u043F\u0440\u0438\u0432\u0438\u043B\u0435\u0433\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0445 \u043A\u043E\u043C\u0430\u043D\u0434</label>
+      </div>
+
+      <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);border:1px solid var(--cs-srv-border);border-radius:8px;padding:8px 12px;font-size:11.5px;">
+        <span style="color:var(--cs-srv-text-muted);">\u0410\u0433\u0435\u043D\u0442 \u0443\u0436\u0435 \u0437\u0430\u043F\u0443\u0449\u0435\u043D \u0438\u043B\u0438 \u043D\u0435\u0442 \u043F\u0440\u044F\u043C\u043E\u0433\u043E SSH-\u0434\u043E\u0441\u0442\u0443\u043F\u0430?</span>
+        <button type="button" id="cs-install-manual-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;text-decoration:underline;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;">
+          <span>\u0420\u0443\u0447\u043D\u0430\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430 (IP, \u043F\u043E\u0440\u0442, TOTP) \u2192</span>
+        </button>
       </div>
 
       <!-- Terminal Logs Window -->
@@ -795,6 +1270,10 @@ var ConfigStudioServersPlugin = (() => {
     }
     modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
     modal.querySelector("#cs-install-cancel-btn")?.addEventListener("click", closeModal);
+    modal.querySelector("#cs-install-manual-btn")?.addEventListener("click", () => {
+      closeModal();
+      openManualAgentModal(srv);
+    });
     const runBtn = modal.querySelector("#cs-install-run-btn");
     const termEl = modal.querySelector("#cs-install-terminal");
     const portInput = modal.querySelector("#cs-install-port");
@@ -982,11 +1461,16 @@ var ConfigStudioServersPlugin = (() => {
             <div class="cs-fleet-form-help" id="srv-agent-url-hint" style="color:#38bdf8;margin:0;font-size:11.5px;">
               \u0414\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u0438\u0439 URL: http://{host}:${srv.connection?.agent?.port || 8085}
             </div>
-            ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
-              <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;">
-                ${ICONS.agent} <span>1-Click \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0430\u0433\u0435\u043D\u0442</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-manual-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;" title="\u0420\u0443\u0447\u043D\u0430\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430 IP, \u043F\u043E\u0440\u0442\u0430, API Key \u0438 TOTP \u0441\u0435\u043A\u0440\u0435\u0442\u0430">
+                ${ICONS.key} <span>\u0420\u0443\u0447\u043D\u0430\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430...</span>
               </button>
-            ` : ""}
+              ${!isNew && (srv.sshHostRef || srv.connection?.ssh?.host) ? `
+                <button type="button" class="cs-fleet-btn-secondary" id="cs-modal-install-agent-btn" style="padding:5px 12px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;">
+                  ${ICONS.agent} <span>1-Click \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0430\u0433\u0435\u043D\u0442</span>
+                </button>
+              ` : ""}
+            </div>
           </div>
         </div>
       </div>
@@ -1244,6 +1728,13 @@ var ConfigStudioServersPlugin = (() => {
           delete srv.connection.agent.secretRef;
         });
       }
+    }
+    const manualAgentBtn = modal.querySelector("#cs-modal-manual-agent-btn");
+    if (manualAgentBtn) {
+      manualAgentBtn.addEventListener("click", () => {
+        closeModal();
+        openManualAgentModal(srv);
+      });
     }
     const instBtn = modal.querySelector("#cs-modal-install-agent-btn");
     if (instBtn) {
@@ -2907,6 +3398,9 @@ var ConfigStudioServersPlugin = (() => {
           },
           openBatchInstall: (ids) => {
             openBatchInstallModal(ids);
+          },
+          openManualAgent: (server) => {
+            fleet.openManualAgentModal(server);
           }
         },
         PLUGIN_ID

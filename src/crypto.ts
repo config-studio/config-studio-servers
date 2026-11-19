@@ -6,6 +6,40 @@ import { TOTP_STEP_SECONDS } from './constants';
  * Conforms to RFC 6238 and RFC 4226 specifications.
  */
 
+export function cleanBase32(secret: string): string {
+  if (!secret) return '';
+  return secret.toUpperCase().replace(/[^A-Z2-7]/g, '');
+}
+
+export function isValidBase32(secret: string): boolean {
+  const clean = cleanBase32(secret);
+  return clean.length >= 16;
+}
+
+export function generateRandomBase32(length: number = 24): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let result = '';
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto ? window.crypto : (globalThis as any).crypto;
+  if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+    const bytes = new Uint8Array(length);
+    cryptoObj.getRandomValues(bytes);
+    for (let i = 0; i < length; i++) {
+      result += alphabet[bytes[i] % alphabet.length];
+    }
+  } else {
+    for (let i = 0; i < length; i++) {
+      result += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+  }
+  return result;
+}
+
+export function generateRandomKeyId(prefix: string = 'cs_key'): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}_${rand}`;
+}
+
 export function base32Decode(str: string): Uint8Array {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const cleanStr = (str || '').toUpperCase().replace(/=+$/, '');

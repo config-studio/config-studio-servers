@@ -75,6 +75,9 @@ export function initServersPlugin(): void {
         },
         openBatchInstall: (ids?: string[]) => {
           openBatchInstallModal(ids);
+        },
+        openManualAgent: (server?: any) => {
+          fleet.openManualAgentModal(server);
         }
       },
       PLUGIN_ID
@@ -108,3 +111,4 @@ export * from './ui/sendFileModal';
 export * from './ui/tokensModal';
 export * from './ui/rawYamlModal';
 export * from './ui/splitPanel';
+export * from './ui/manualAgentModal';
