@@ -71,10 +71,10 @@ describe('TOTP & Crypto Engine (RFC 6238 / RFC 4226)', () => {
     assert.equal(parsed.nodeName, 'Production VPS');
   });
 
-  it('should parse csagent:// link with query parameters', () => {
-    const link = 'csagent://api_user:SECRETBASE32@vpn.example.com:9998/?roots=/home/deploy,/etc/nginx&tls=1#staging';
+  it('should parse csagent:// link with query parameters and explicit token key', () => {
+    const link = 'csagent://this_token_key_not_id:SECRETBASE32@vpn.example.com:9998/?roots=/home/deploy,/etc/nginx&tls=1#staging';
     const parsed = parseAgentConnectionLink(link);
-    assert.equal(parsed.keyId, 'api_user');
+    assert.equal(parsed.keyId, 'this_token_key_not_id');
     assert.equal(parsed.secret, 'SECRETBASE32');
     assert.equal(parsed.host, 'vpn.example.com');
     assert.equal(parsed.port, 9998);
