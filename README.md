@@ -1,6 +1,6 @@
 # Config Studio Servers & Fleet Manager (`servers`)
 
-[![Version](https://img.shields.io/badge/Version-v1.4.0-teal.svg)](https://github.com/config-studio/config-studio-servers/releases)
+[![Version](https://img.shields.io/badge/Version-v1.5.2-teal.svg)](https://github.com/config-studio/config-studio-servers/releases)
 [![Format](https://img.shields.io/badge/Format-.cspkg%20(MRS)-blue.svg)](https://github.com/config-studio/config-studio-plugins)
 [![Security](https://img.shields.io/badge/Security-Zero--Secret%20Vault-emerald.svg)](https://github.com/config-studio/config-studio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -38,20 +38,38 @@
 - Для реквизитов подключения агентов выделена системная категория `agent_credentials` с двухсоставным TOTP-ключом.
 - В выпадающих списках ключей отображаются понятные имена `Title [ID]` с фирменным бирюзовым бейджем `AGENT`.
 
-### 5. 1-Click Автоустановка агента (Daemon Auto-Onboarding)
+### 5. 1-Click Автоустановка агента (Daemon Auto-Onboarding via SSH)
 - Автоматическое определение архитектуры (`linux/amd64`, `linux/arm64`) и системы инициализации (`systemd` / `OpenRC` / `nohup`) удаленного сервера через SSH.
 - Выбор кастомного порта агента (по умолчанию `8085`).
-- Автоматическая потоковая загрузка бинарника по SFTP с ускорением `UseConcurrentWrites`, генерация `agent.yaml`, генерация Master/TOTP секретов и регистрация системного сервиса.
+- Автоматическая потоковая загрузка бинарника по SFTP с ускорением `UseConcurrentWrites`.
+- **Нативная системная активация через `config-studio-agent -install`**:
+  - Атомарная ротация бинарника с резервной копией `.bak` (защита от сбоев).
+  - Вызов `config-studio-agent -install -port <port> -roots <paths> -raw` прямо на целевом хосте, что гарантирует единый и проверенный способ развертывания службы и генерации `agent.yaml`.
+  - В режиме обновления (`UpgradeOnly`) автоматически сохраняются существующие секреты и настройки.
 - Защита SSH-сессий: использование регулярного выражения `pkill -f '[c]onfig-studio-agent'` (обход ограничения Linux `TASK_COMM_LEN` в 15 символов) и перенаправление дескрипторов `</dev/null >/dev/null 2>&1 &`.
 
-### 6. Автообнаружение в локальной сети (LAN Discovery) & 1-Click Adopt
+### 6. Ручная установка и 1-Click импорт по ссылке (Manual Setup & Connection Link)
+- **Установка демона без SSH-доступа от имени root:**
+  ```bash
+  # Установка как системная служба с генерацией ключей и ссылок:
+  sudo ./config-studio-agent -install -port 8085 -roots "/opt/projects,/var/www" -name "Production VPS"
+
+  # Вывод чистой ссылки подключения:
+  sudo ./config-studio-agent -install -port 8085 -roots "/opt/projects,/var/www" -raw
+  # Выведет: cs-agent://cs_key_...:...@ip:8085/?roots=...#Production%20VPS
+  ```
+- **1-Click импорт в Config Studio:**
+  - В модальном окне «Агент вручную» достаточно вставить скопированную ссылку `cs-agent://...` в поле быстрого импорта: IP, порт, постоянный API-ключ `cs_key_<32hex>`, TOTP-секрет и рабочие папки заполнятся моментально.
+  - Реквизиты сохраняются в зашифрованный Vault ядра (`agent:<server_id>`), а в `servers.yaml` записывается аккуратная ссылка `vault_secret`.
+
+### 7. Автообнаружение в локальной сети (LAN Discovery) & 1-Click Adopt
 - Быстрое параллельное сканирование локальной подсети (`192.168.x.1..254`) на наличие запущенных демонов `config-studio-agent`.
 - Сопряжение обнаруженного узла во флот нажатием кнопки «Принять (Adopt)» в 1 клик.
 
-### 7. Передача файлов на узел (Deploy to Fleet)
+### 8. Передача файлов на узел (Deploy to Fleet)
 - Отправка открытого в редакторе файла на любой сервер флота или группу узлов с подтверждением пути назначения.
 
-### 8. Дизайн-система `@config-studio/ui`
+### 9. Дизайн-система `@config-studio/ui`
 - Все окна приведены к эталонным размерам дизайн-системы: `.cs-fleet-modal-lg cs-fleet-modal-fixed` (720px, фиксированная высота) и `.cs-fleet-modal-md` (540px).
 - Кастомные Dropdown-селекторы с индикаторами статуса серверов, бейджами типов секретов и автоматическим разворотом вверх (`openUpward`) при нехватке места.
 
