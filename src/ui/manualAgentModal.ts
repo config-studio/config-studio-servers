@@ -53,7 +53,7 @@ export async function openManualAgentModal(
     (initialId ? `agent:${initialId}` : '');
 
   // Pre-load existing credentials from Vault if present
-  let existingKeyId = 'cs_agent_master';
+  let existingKeyId = generateRandomKeyId('cs_key');
   let existingSecret = '';
 
   if (initialVaultSecretId) {
@@ -200,7 +200,7 @@ export async function openManualAgentModal(
               <label class="cs-fleet-form-label" style="margin-bottom:0;">API Key (Key ID) *</label>
               <button type="button" id="cs-manual-gen-key-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">🎲 Сгенерировать</button>
             </div>
-            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_agent_master" style="font-family:monospace;" />
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_..." style="font-family:monospace;" />
             <div class="cs-fleet-form-help">Идентификатор ключа из config.yaml агента</div>
           </div>
 
@@ -425,8 +425,8 @@ export async function openManualAgentModal(
 
   // Generator buttons
   genKeyBtn.addEventListener('click', () => {
-    keyIdInput.value = generateRandomKeyId('cs_master');
-    showToast('Сгенерирован новый Key ID', 'info');
+    keyIdInput.value = generateRandomKeyId('cs_key');
+    showToast('Сгенерирован новый Key ID (cs_key_...)', 'info');
   });
 
   genSecretBtn.addEventListener('click', () => {

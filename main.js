@@ -234,8 +234,18 @@ var ConfigStudioServersPlugin = (() => {
     return result;
   }
   function generateRandomKeyId(prefix = "cs_key") {
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `${prefix}_${rand}`;
+    const bytes = new Uint8Array(16);
+    const cryptoObj = typeof window !== "undefined" && window.crypto ? window.crypto : globalThis.crypto;
+    if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+      cryptoObj.getRandomValues(bytes);
+      const hex2 = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+      return `${prefix}_${hex2}`;
+    }
+    let hex = "";
+    for (let i = 0; i < 32; i++) {
+      hex += Math.floor(Math.random() * 16).toString(16);
+    }
+    return `${prefix}_${hex}`;
   }
   function parseAgentConnectionLink(raw) {
     let link = (raw || "").trim();
@@ -714,7 +724,7 @@ var ConfigStudioServersPlugin = (() => {
       initialHost = srv?.connection?.ssh?.host || srv?.host || srv?.sshHostRef || "";
     }
     const initialVaultSecretId = srv?.connection?.agent?.vaultSecret || srv?.connection?.agent?.secretRef || (initialId ? `agent:${initialId}` : "");
-    let existingKeyId = "cs_agent_master";
+    let existingKeyId = generateRandomKeyId("cs_key");
     let existingSecret = "";
     if (initialVaultSecretId) {
       try {
@@ -853,7 +863,7 @@ var ConfigStudioServersPlugin = (() => {
               <label class="cs-fleet-form-label" style="margin-bottom:0;">API Key (Key ID) *</label>
               <button type="button" id="cs-manual-gen-key-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">\u{1F3B2} \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C</button>
             </div>
-            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_agent_master" style="font-family:monospace;" />
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_..." style="font-family:monospace;" />
             <div class="cs-fleet-form-help">\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u043A\u043B\u044E\u0447\u0430 \u0438\u0437 config.yaml \u0430\u0433\u0435\u043D\u0442\u0430</div>
           </div>
 
@@ -1047,8 +1057,8 @@ var ConfigStudioServersPlugin = (() => {
       toggleSecretBtn.textContent = secretVisible ? "\u{1F512}" : "\u{1F441}";
     });
     genKeyBtn.addEventListener("click", () => {
-      keyIdInput.value = generateRandomKeyId("cs_master");
-      showToast("\u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D \u043D\u043E\u0432\u044B\u0439 Key ID", "info");
+      keyIdInput.value = generateRandomKeyId("cs_key");
+      showToast("\u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D \u043D\u043E\u0432\u044B\u0439 Key ID (cs_key_...)", "info");
     });
     genSecretBtn.addEventListener("click", () => {
       totpSecretInput.value = generateRandomBase32(24);

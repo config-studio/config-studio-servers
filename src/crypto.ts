@@ -36,8 +36,19 @@ export function generateRandomBase32(length: number = 24): string {
 }
 
 export function generateRandomKeyId(prefix: string = 'cs_key'): string {
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${prefix}_${rand}`;
+  const bytes = new Uint8Array(16);
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto ? window.crypto : (globalThis as any).crypto;
+  if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+    cryptoObj.getRandomValues(bytes);
+    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${prefix}_${hex}`;
+  }
+  let hex = '';
+  for (let i = 0; i < 32; i++) {
+    hex += Math.floor(Math.random() * 16).toString(16);
+  }
+  return `${prefix}_${hex}`;
 }
 
 export interface AgentConnectionLinkInfo {
