@@ -857,14 +857,14 @@ var ConfigStudioServersPlugin = (() => {
         </div>
 
         <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: start;">
-          <!-- API Key / Key ID -->
+          <!-- API Token Key -->
           <div class="cs-fleet-form-group">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-              <label class="cs-fleet-form-label" style="margin-bottom:0;">API Key (Key ID) *</label>
+              <label class="cs-fleet-form-label" style="margin-bottom:0;">\u041A\u043B\u044E\u0447 API \u0442\u043E\u043A\u0435\u043D\u0430 (cs_key_...) *</label>
               <button type="button" id="cs-manual-gen-key-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">\u{1F3B2} \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C</button>
             </div>
-            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_..." style="font-family:monospace;" />
-            <div class="cs-fleet-form-help">\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u043A\u043B\u044E\u0447\u0430 \u0438\u0437 config.yaml \u0430\u0433\u0435\u043D\u0442\u0430</div>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_56643d5586e39415ec34721cfc1b31b6" style="font-family:monospace;" />
+            <div class="cs-fleet-form-help">\u041F\u043E\u0441\u0442\u043E\u044F\u043D\u043D\u044B\u0439 API-\u043A\u043B\u044E\u0447 \u0430\u0433\u0435\u043D\u0442\u0430 \u0438\u0437 agent.yaml (cs_key_..., 32 hex-\u0441\u0438\u043C\u0432\u043E\u043B\u0430)</div>
           </div>
 
           <!-- TOTP Secret -->
@@ -1008,7 +1008,7 @@ var ConfigStudioServersPlugin = (() => {
       const host = hostInput.value.trim() || "127.0.0.1";
       const port = parseInt(portInput.value.trim(), 10) || DEFAULT_AGENT_PORT;
       const isHttps = httpsCheckbox.checked;
-      const keyId = keyIdInput.value.trim() || "cs_agent_master";
+      const keyId = keyIdInput.value.trim() || generateRandomKeyId("cs_key");
       const secret = cleanBase32(totpSecretInput.value) || "JBSWY3DPEHPK3PXP";
       const rawRoots = rootsInput.value.split(",").map((r) => r.trim()).filter(Boolean);
       const nodeName = nodeNameInput ? nodeNameInput.value.trim() : srv?.name || host;
@@ -1130,7 +1130,7 @@ var ConfigStudioServersPlugin = (() => {
         portInput.focus();
         return;
       }
-      const keyId = keyIdInput.value.trim() || "cs_agent_master";
+      const keyId = keyIdInput.value.trim() || generateRandomKeyId("cs_key");
       const secret = cleanBase32(totpSecretInput.value);
       if (totpSecretInput.value.trim() && !isValidBase32(secret)) {
         showToast("TOTP \u0441\u0435\u043A\u0440\u0435\u0442 \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043E\u0434\u0435\u0440\u0436\u0430\u0442\u044C \u043D\u0435 \u043C\u0435\u043D\u0435\u0435 16 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432 Base32 (A-Z, 2-7)", "error");

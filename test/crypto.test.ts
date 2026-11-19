@@ -39,14 +39,15 @@ describe('TOTP & Crypto Engine (RFC 6238 / RFC 4226)', () => {
     assert.match(sec24, /^[A-Z2-7]{24}$/);
   });
 
-  it('should generate valid random Key ID', () => {
-    const key = generateRandomKeyId('cs_master');
-    assert.match(key, /^cs_master_[a-z0-9]+$/);
+  it('should generate valid random Key ID with 32 hex characters', () => {
+    const key = generateRandomKeyId('cs_key');
+    assert.match(key, /^cs_key_[0-9a-f]{32}$/);
   });
 
   it('should format and parse cs-agent:// connection URLs (VLESS/Hysteria style)', () => {
+    const standardKey = 'cs_key_56643d5586e39415ec34721cfc1b31b6';
     const formatted = formatAgentConnectionLink({
-      keyId: 'cs_master_vps',
+      keyId: standardKey,
       secret: 'JBSWY3DPEHPK3PXP',
       host: '192.168.0.110',
       port: 8085,
@@ -56,12 +57,12 @@ describe('TOTP & Crypto Engine (RFC 6238 / RFC 4226)', () => {
       nodeId: 'prod-vps'
     });
 
-    assert.match(formatted, /^cs-agent:\/\/cs_master_vps:JBSWY3DPEHPK3PXP@192.168.0.110:8085\//);
+    assert.match(formatted, new RegExp(`^cs-agent:\/\/${standardKey}:JBSWY3DPEHPK3PXP@192\\.168\\.0\\.110:8085\/`));
     assert.match(formatted, /roots=%2Fopt%2Fprojects%2C%2Fvar%2Fwww/);
     assert.match(formatted, /#Production%20VPS/);
 
     const parsed = parseAgentConnectionLink(formatted);
-    assert.equal(parsed.keyId, 'cs_master_vps');
+    assert.equal(parsed.keyId, standardKey);
     assert.equal(parsed.secret, 'JBSWY3DPEHPK3PXP');
     assert.equal(parsed.host, '192.168.0.110');
     assert.equal(parsed.port, 8085);

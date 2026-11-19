@@ -194,14 +194,14 @@ export async function openManualAgentModal(
         </div>
 
         <div class="cs-fleet-form-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: start;">
-          <!-- API Key / Key ID -->
+          <!-- API Token Key -->
           <div class="cs-fleet-form-group">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-              <label class="cs-fleet-form-label" style="margin-bottom:0;">API Key (Key ID) *</label>
+              <label class="cs-fleet-form-label" style="margin-bottom:0;">Ключ API токена (cs_key_...) *</label>
               <button type="button" id="cs-manual-gen-key-btn" style="background:none;border:none;color:#38bdf8;cursor:pointer;padding:0;font-size:11px;">🎲 Сгенерировать</button>
             </div>
-            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_..." style="font-family:monospace;" />
-            <div class="cs-fleet-form-help">Идентификатор ключа из config.yaml агента</div>
+            <input type="text" class="cs-fleet-form-input" id="cs-manual-key-id" value="${escapeHtml(existingKeyId)}" placeholder="cs_key_56643d5586e39415ec34721cfc1b31b6" style="font-family:monospace;" />
+            <div class="cs-fleet-form-help">Постоянный API-ключ агента из agent.yaml (cs_key_..., 32 hex-символа)</div>
           </div>
 
           <!-- TOTP Secret -->
@@ -368,7 +368,7 @@ export async function openManualAgentModal(
     const host = hostInput.value.trim() || '127.0.0.1';
     const port = parseInt(portInput.value.trim(), 10) || DEFAULT_AGENT_PORT;
     const isHttps = httpsCheckbox.checked;
-    const keyId = keyIdInput.value.trim() || 'cs_agent_master';
+    const keyId = keyIdInput.value.trim() || generateRandomKeyId('cs_key');
     const secret = cleanBase32(totpSecretInput.value) || 'JBSWY3DPEHPK3PXP';
     const rawRoots = rootsInput.value.split(',').map(r => r.trim()).filter(Boolean);
     const nodeName = nodeNameInput ? nodeNameInput.value.trim() : (srv?.name || host);
@@ -517,7 +517,7 @@ export async function openManualAgentModal(
       return;
     }
 
-    const keyId = keyIdInput.value.trim() || 'cs_agent_master';
+    const keyId = keyIdInput.value.trim() || generateRandomKeyId('cs_key');
     const secret = cleanBase32(totpSecretInput.value);
 
     if (totpSecretInput.value.trim() && !isValidBase32(secret)) {
