@@ -461,7 +461,8 @@ export async function openManualAgentModal(
         otp = await generateTOTPWebCrypto(secret);
       }
       const tokenHeader = otp ? `Bearer ${keyId}:${otp}` : (keyId ? `Bearer ${keyId}` : '');
-      const testUrl = `${isHttps ? 'https' : 'http'}://${host}:${port}/health`;
+      const testPath = tokenHeader ? '/api/status' : '/health';
+      const testUrl = `${isHttps ? 'https' : 'http'}://${host}:${port}${testPath}`;
 
       // Perform fetch with 3.5s abort timeout
       const ctrl = new AbortController();
@@ -481,9 +482,19 @@ export async function openManualAgentModal(
 
       const ms = Math.round(performance.now() - start);
       if (res.ok) {
-        testStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">✓ Онлайн (${ms} ms)! Агент ответил HTTP ${res.status}. TOTP авторизация подтверждена.</span>`;
+        let authNote = 'Хост доступен.';
+        if (tokenHeader) {
+          try {
+            const data = await res.json();
+            const level = data.accessLevel === 'read_write' ? 'Read/Write (TOTP подтвержден)' : (data.accessLevel || 'Подтверждено');
+            authNote = `Авторизация: ${level}.`;
+          } catch {
+            authNote = 'Авторизация подтверждена.';
+          }
+        }
+        testStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">✓ Онлайн (${ms} ms)! Агент ответил HTTP ${res.status}. ${authNote}</span>`;
       } else {
-        testStatusEl.innerHTML = `<span style="color:#f59e0b;">⚠ Агент ответил HTTP ${res.status} (${res.statusText || 'Статус не 200'}). Связь есть, проверьте права ключа.</span>`;
+        testStatusEl.innerHTML = `<span style="color:#f59e0b;">⚠ Агент ответил HTTP ${res.status} (${res.statusText || 'Статус не 200'}). Проверьте API токен и TOTP секрет.</span>`;
       }
     } catch (err: any) {
       testStatusEl.innerHTML = `<span style="color:#ef4444;">✕ Ошибка связи: ${escapeHtml(err.message)}</span>`;

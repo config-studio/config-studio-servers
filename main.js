@@ -1085,7 +1085,8 @@ var ConfigStudioServersPlugin = (() => {
           otp = await generateTOTPWebCrypto(secret);
         }
         const tokenHeader = otp ? `Bearer ${keyId}:${otp}` : keyId ? `Bearer ${keyId}` : "";
-        const testUrl = `${isHttps ? "https" : "http"}://${host}:${port}/health`;
+        const testPath = tokenHeader ? "/api/status" : "/health";
+        const testUrl = `${isHttps ? "https" : "http"}://${host}:${port}${testPath}`;
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 3500);
         const headers = {};
@@ -1100,9 +1101,19 @@ var ConfigStudioServersPlugin = (() => {
         clearTimeout(timer);
         const ms = Math.round(performance.now() - start);
         if (res.ok) {
-          testStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">\u2713 \u041E\u043D\u043B\u0430\u0439\u043D (${ms} ms)! \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status}. TOTP \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430.</span>`;
+          let authNote = "\u0425\u043E\u0441\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.";
+          if (tokenHeader) {
+            try {
+              const data = await res.json();
+              const level = data.accessLevel === "read_write" ? "Read/Write (TOTP \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D)" : data.accessLevel || "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E";
+              authNote = `\u0410\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F: ${level}.`;
+            } catch {
+              authNote = "\u0410\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430.";
+            }
+          }
+          testStatusEl.innerHTML = `<span style="color:#10b981;font-weight:600;">\u2713 \u041E\u043D\u043B\u0430\u0439\u043D (${ms} ms)! \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status}. ${authNote}</span>`;
         } else {
-          testStatusEl.innerHTML = `<span style="color:#f59e0b;">\u26A0 \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status} (${res.statusText || "\u0421\u0442\u0430\u0442\u0443\u0441 \u043D\u0435 200"}). \u0421\u0432\u044F\u0437\u044C \u0435\u0441\u0442\u044C, \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0440\u0430\u0432\u0430 \u043A\u043B\u044E\u0447\u0430.</span>`;
+          testStatusEl.innerHTML = `<span style="color:#f59e0b;">\u26A0 \u0410\u0433\u0435\u043D\u0442 \u043E\u0442\u0432\u0435\u0442\u0438\u043B HTTP ${res.status} (${res.statusText || "\u0421\u0442\u0430\u0442\u0443\u0441 \u043D\u0435 200"}). \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 API \u0442\u043E\u043A\u0435\u043D \u0438 TOTP \u0441\u0435\u043A\u0440\u0435\u0442.</span>`;
         }
       } catch (err) {
         testStatusEl.innerHTML = `<span style="color:#ef4444;">\u2715 \u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438: ${escapeHtml(err.message)}</span>`;
