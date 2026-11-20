@@ -1,6 +1,6 @@
 # Config Studio Servers & Fleet Manager (`servers`)
 
-[![Version](https://img.shields.io/badge/Version-v1.5.2-teal.svg)](https://github.com/config-studio/config-studio-servers/releases)
+[![Version](https://img.shields.io/badge/Version-v1.6.0-teal.svg)](https://github.com/config-studio/config-studio-servers/releases)
 [![Format](https://img.shields.io/badge/Format-.cspkg%20(MRS)-blue.svg)](https://github.com/config-studio/config-studio-plugins)
 [![Security](https://img.shields.io/badge/Security-Zero--Secret%20Vault-emerald.svg)](https://github.com/config-studio/config-studio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

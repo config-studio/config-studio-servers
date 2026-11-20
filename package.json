@@ -1,6 +1,6 @@
 {
   "name": "config-studio-servers",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Централизованное управление серверами, servers.yaml, нативный SSH/SFTP, массовая параллельная установка агентов и отправка файлов",
   "author": "Config Studio Team",
   "license": "MIT",
