@@ -3,6 +3,7 @@ import { fleet } from '../fleet';
 import { ICONS, DEFAULT_AGENT_PORT } from '../constants';
 import { escapeHtml, showToast } from './domUtils';
 import { saveVaultSecret, getVaultSecret, saveServer } from '../api';
+import { openBatchImportLinksModal } from './batchImportLinksModal';
 import {
   cleanBase32,
   isValidBase32,
@@ -109,9 +110,14 @@ export async function openManualAgentModal(
             <span>⚡</span>
             <span>1-Click Импорт по ссылке агента (cs-agent://)</span>
           </div>
-          <button type="button" id="cs-manual-copy-link-btn" title="Скопировать все параметры как ссылку подключения cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
-            📋 Скопировать ссылку cs-agent://
-          </button>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <button type="button" id="cs-manual-copy-link-btn" title="Скопировать все параметры как ссылку подключения cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
+              📋 Скопировать ссылку cs-agent://
+            </button>
+            <button type="button" id="cs-manual-switch-to-batch-btn" title="Импортировать пачку ссылок cs-agent:// сразу" style="background:none;border:none;color:var(--cs-srv-accent);cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;font-weight:600;">
+              ${ICONS.link} Пакетный импорт ссылок...
+            </button>
+          </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" class="cs-fleet-form-input" id="cs-manual-import-link" placeholder="Вставьте ссылку: cs-agent://key:secret@host:port/?roots=/opt,/var#node-name" style="font-family:monospace;font-size:11.5px;" />
@@ -259,6 +265,11 @@ export async function openManualAgentModal(
 
   modal.querySelector('.cs-fleet-modal-close')?.addEventListener('click', closeModal);
   modal.querySelector('#cs-manual-cancel-btn')?.addEventListener('click', closeModal);
+
+  modal.querySelector('#cs-manual-switch-to-batch-btn')?.addEventListener('click', () => {
+    closeModal();
+    openBatchImportLinksModal();
+  });
 
   // DOM Elements
   const importInput = modal.querySelector('#cs-manual-import-link') as HTMLInputElement;

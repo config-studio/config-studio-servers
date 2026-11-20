@@ -4,6 +4,7 @@ import { escapeHtml } from './domUtils';
 import { createServerCard } from './serverCard';
 import { openEditModal } from './editServerModal';
 import { openBatchInstallModal } from './batchInstallModal';
+import { openBatchImportLinksModal } from './batchImportLinksModal';
 import { openRawYAMLModal } from './rawYamlModal';
 
 /**
@@ -203,15 +204,24 @@ export function registerHeaderSwitcher(): void {
         const footer = document.createElement('div');
         footer.className = 'cs-fleet-dropdown-footer';
         footer.innerHTML = `
-          <div style="display:flex;align-items:center;gap:8px;">
-            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-batch-btn" style="background:none;border:none;cursor:pointer;color:var(--cs-srv-accent);display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
-              ${ICONS.agent} <span>Массовая установка</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-import-btn" style="background:none;border:none;cursor:pointer;color:var(--cs-srv-accent);display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
+              ${ICONS.link} <span>Импорт ссылок</span>
+            </button>
+            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-batch-btn" style="background:none;border:none;cursor:pointer;color:inherit;opacity:0.85;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
+              ${ICONS.agent} <span>Массовая уст.</span>
             </button>
           </div>
           <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-raw-yaml-btn" style="background:none;border:none;cursor:pointer;color:inherit;font-size:inherit;padding:0;display:inline-flex;align-items:center;gap:4px;">
             <span>servers.yaml</span> ${ICONS.arrowRight}
           </button>
         `;
+
+        footer.querySelector('#cs-fleet-dropdown-import-btn')?.addEventListener('click', e => {
+          e.stopPropagation();
+          closeDropdown();
+          openBatchImportLinksModal();
+        });
 
         footer.querySelector('#cs-fleet-dropdown-batch-btn')?.addEventListener('click', e => {
           e.stopPropagation();

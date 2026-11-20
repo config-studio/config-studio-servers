@@ -124,6 +124,85 @@ export function parseAgentConnectionLink(raw: string): AgentConnectionLinkInfo {
   };
 }
 
+export interface ParsedBatchAgentLink extends AgentConnectionLinkInfo {
+  rawLink: string;
+  lineNumber?: number;
+}
+
+export interface BatchLinkParseResult {
+  items: ParsedBatchAgentLink[];
+  warnings: { line: number; text: string; error: string }[];
+}
+
+/**
+ * Parses multiple cs-agent:// connection links from a multiline or raw text block.
+ * Supports comments (#, //), log-prefixed lines, and auto-disambiguates duplicate IDs in the batch.
+ */
+export function parseMultipleAgentConnectionLinks(rawText: string): BatchLinkParseResult {
+  const result: BatchLinkParseResult = {
+    items: [],
+    warnings: []
+  };
+
+  if (!rawText || !rawText.trim()) {
+    return result;
+  }
+
+  const lines = rawText.split(/\r?\n/);
+  const seenIds = new Map<string, number>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    // Skip empty lines and comment lines
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+      continue;
+    }
+
+    // Look for link patterns in line (supports cs-agent://, csagent://, cs://agent/)
+    const match = trimmed.match(/(?:cs-agent|csagent):\/\/[^\s"'<>\`]+|cs:\/\/agent\/[^\s"'<>\`]+/i);
+    if (!match) {
+      result.warnings.push({
+        line: i + 1,
+        text: trimmed.slice(0, 80),
+        error: 'В строке не найдена ссылка подключения cs-agent://'
+      });
+      continue;
+    }
+
+    const candidateLink = match[0];
+    try {
+      const parsed = parseAgentConnectionLink(candidateLink);
+
+      // Handle duplicate IDs in batch
+      let uniqueId = parsed.nodeId;
+      if (seenIds.has(uniqueId)) {
+        const count = seenIds.get(uniqueId)! + 1;
+        seenIds.set(uniqueId, count);
+        uniqueId = `${uniqueId}-${count}`;
+      } else {
+        seenIds.set(uniqueId, 1);
+      }
+
+      result.items.push({
+        ...parsed,
+        nodeId: uniqueId,
+        rawLink: candidateLink,
+        lineNumber: i + 1
+      });
+    } catch (err: any) {
+      result.warnings.push({
+        line: i + 1,
+        text: candidateLink.slice(0, 80),
+        error: err.message || 'Ошибка парсинга ссылки'
+      });
+    }
+  }
+
+  return result;
+}
+
 export function formatAgentConnectionLink(info: {
   keyId: string;
   secret: string;

@@ -6,6 +6,7 @@ import { syncSSHHost } from './hostSync';
 import { apiFetch, fetchServers, pingServer } from './api';
 import { showToast } from './ui/domUtils';
 import { openManualAgentModal } from './ui/manualAgentModal';
+import { openBatchImportLinksModal } from './ui/batchImportLinksModal';
 
 /**
  * Fleet Orchestration Controller
@@ -190,6 +191,10 @@ export class FleetController {
 
   public async openManualAgentModal(server?: ServerNode): Promise<void> {
     return openManualAgentModal(server);
+  }
+
+  public openBatchImportLinksModal(): void {
+    openBatchImportLinksModal();
   }
 
   public clearTotpTimer(): void {

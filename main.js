@@ -60,6 +60,7 @@ var ConfigStudioServersPlugin = (() => {
     openSendToFleetModal: () => openSendToFleetModal,
     openTokensModal: () => openTokensModal,
     parseAgentConnectionLink: () => parseAgentConnectionLink,
+    parseMultipleAgentConnectionLinks: () => parseMultipleAgentConnectionLinks,
     pingServer: () => pingServer,
     registerHeaderSwitcher: () => registerHeaderSwitcher,
     registerSidebarPanel: () => registerSidebarPanel,
@@ -204,6 +205,7 @@ var ConfigStudioServersPlugin = (() => {
     search: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>',
     key: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>',
     warning: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>',
+    link: '<svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>',
     arrowRight: '<svg style="width:12px;height:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>'
   };
 
@@ -292,6 +294,58 @@ var ConfigStudioServersPlugin = (() => {
       nodeName,
       nodeId: nodeId || "agent-node"
     };
+  }
+  function parseMultipleAgentConnectionLinks(rawText) {
+    const result = {
+      items: [],
+      warnings: []
+    };
+    if (!rawText || !rawText.trim()) {
+      return result;
+    }
+    const lines = rawText.split(/\r?\n/);
+    const seenIds = /* @__PURE__ */ new Map();
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const trimmed = rawLine.trim();
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) {
+        continue;
+      }
+      const match = trimmed.match(/(?:cs-agent|csagent):\/\/[^\s"'<>\`]+|cs:\/\/agent\/[^\s"'<>\`]+/i);
+      if (!match) {
+        result.warnings.push({
+          line: i + 1,
+          text: trimmed.slice(0, 80),
+          error: "\u0412 \u0441\u0442\u0440\u043E\u043A\u0435 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0441\u0441\u044B\u043B\u043A\u0430 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F cs-agent://"
+        });
+        continue;
+      }
+      const candidateLink = match[0];
+      try {
+        const parsed = parseAgentConnectionLink(candidateLink);
+        let uniqueId = parsed.nodeId;
+        if (seenIds.has(uniqueId)) {
+          const count = seenIds.get(uniqueId) + 1;
+          seenIds.set(uniqueId, count);
+          uniqueId = `${uniqueId}-${count}`;
+        } else {
+          seenIds.set(uniqueId, 1);
+        }
+        result.items.push({
+          ...parsed,
+          nodeId: uniqueId,
+          rawLink: candidateLink,
+          lineNumber: i + 1
+        });
+      } catch (err) {
+        result.warnings.push({
+          line: i + 1,
+          text: candidateLink.slice(0, 80),
+          error: err.message || "\u041E\u0448\u0438\u0431\u043A\u0430 \u043F\u0430\u0440\u0441\u0438\u043D\u0433\u0430 \u0441\u0441\u044B\u043B\u043A\u0438"
+        });
+      }
+    }
+    return result;
   }
   function formatAgentConnectionLink(info) {
     const host = info.host || "127.0.0.1";
@@ -669,6 +723,457 @@ var ConfigStudioServersPlugin = (() => {
     }
   }
 
+  // src/ui/batchImportLinksModal.ts
+  function openBatchImportLinksModal() {
+    const existingServers = store.getServers();
+    const existingGroups = Array.from(new Set(existingServers.map((s) => s.group).filter(Boolean)));
+    const existingIds = new Set(existingServers.map((s) => s.id));
+    const overlay = document.createElement("div");
+    overlay.className = "cs-fleet-modal-overlay";
+    const modal = document.createElement("div");
+    modal.className = "cs-fleet-modal-content cs-fleet-modal-lg cs-fleet-modal-fixed";
+    let parsedItems = [];
+    let isImporting = false;
+    let isPinging = false;
+    modal.innerHTML = `
+    <div class="cs-fleet-modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="color:var(--cs-srv-accent);">${ICONS.link}</span>
+        <span style="font-weight:700;font-size:14px;">\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0438\u043C\u043F\u043E\u0440\u0442 \u0430\u0433\u0435\u043D\u0442\u043E\u0432 \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0430\u043C (Batch Link Import)</span>
+      </div>
+      <button class="cs-fleet-modal-close">${ICONS.close}</button>
+    </div>
+
+    <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;">
+      <!-- Banner -->
+      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--cs-srv-text-primary);line-height:1.5;">
+        \u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0441\u044B\u043B\u043E\u043A \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F <code>cs-agent://...</code> (\u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u0445 \u043F\u043E\u0441\u043B\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044B\u0432\u0430\u043D\u0438\u044F \u0441\u043A\u0440\u0438\u043F\u0442\u043E\u043C, Ansible \u0438\u043B\u0438 \u0438\u0437 \u043A\u043E\u043D\u0441\u043E\u043B\u0438 \u0430\u0433\u0435\u043D\u0442\u043E\u0432).
+        \u0421\u0438\u0441\u0442\u0435\u043C\u0430 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0438\u0437\u0432\u043B\u0435\u0447\u0435\u0442 \u0441\u0435\u0442\u0435\u0432\u043E\u0439 \u0430\u0434\u0440\u0435\u0441, API \u0442\u043E\u043A\u0435\u043D, Base32 TOTP \u0441\u0435\u043A\u0440\u0435\u0442 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u043F\u0430\u043F\u043A\u0438, \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442 \u0443\u0447\u0435\u0442\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435 \u0432 <b>Core Vault</b> \u0438 \u0437\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u0443\u0435\u0442 \u0443\u0437\u043B\u044B \u0432 <b>servers.yaml</b>.
+      </div>
+
+      <!-- Links Input Area -->
+      <div style="background:var(--cs-srv-bg-base);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <label class="cs-fleet-form-label" style="font-weight:600;font-size:12px;">
+            \u0421\u0441\u044B\u043B\u043A\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F (\u043F\u043E \u043E\u0434\u043D\u043E\u0439 \u043D\u0430 \u0441\u0442\u0440\u043E\u043A\u0443 \u0438\u043B\u0438 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u044B \u043B\u043E\u0433\u043E\u0432)
+          </label>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-links-paste-btn" style="padding:2px 8px;font-size:11px;">
+              \u{1F4CB} \u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044C
+            </button>
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-links-sample-btn" style="padding:2px 8px;font-size:11px;">
+              \u041F\u0440\u0438\u043C\u0435\u0440
+            </button>
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-links-clear-btn" style="padding:2px 8px;font-size:11px;">
+              \u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          id="cs-batch-links-textarea"
+          class="cs-fleet-form-input"
+          style="width:100%;height:100px;font-family:monospace;font-size:11px;resize:vertical;line-height:1.4;"
+          placeholder="cs-agent://cs_key_...:BASE32...@192.168.1.10:8085/?roots=/opt/projects#prod-web-01&#10;cs-agent://cs_key_...:BASE32...@192.168.1.11:8085/?roots=/opt/projects#prod-web-02"
+        ></textarea>
+
+        <!-- Live Parse Summary Bar -->
+        <div id="cs-batch-parse-summary" style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--cs-srv-text-muted);">
+          <span>\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u043B\u0438 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0438 \u0434\u043B\u044F \u043F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430...</span>
+          <span id="cs-batch-count-badge" style="font-weight:600;display:none;"></span>
+        </div>
+      </div>
+
+      <!-- Batch Target Defaults (Group, Tags, Conflict Rule) -->
+      <div style="background:var(--cs-srv-bg-base);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-weight:600;font-size:12px;color:var(--cs-srv-text-primary);">\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u0443\u0435\u043C\u043E\u0439 \u043F\u0430\u0440\u0442\u0438\u0438</div>
+        <div class="cs-fleet-form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));gap:10px;">
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u0413\u0440\u0443\u043F\u043F\u0430 \u0444\u043B\u043E\u0442\u0430</label>
+            <input type="text" id="cs-batch-group" class="cs-fleet-form-input" list="cs-batch-existing-groups" value="Agents" />
+            <datalist id="cs-batch-existing-groups">
+              ${existingGroups.map((g) => `<option value="${escapeHtml(g)}"></option>`).join("")}
+            </datalist>
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u0422\u0435\u0433\u0438 \u0443\u0437\u043B\u043E\u0432 (\u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E)</label>
+            <input type="text" id="cs-batch-tags" class="cs-fleet-form-input" value="agent, remote" />
+          </div>
+          <div class="cs-fleet-form-group">
+            <label class="cs-fleet-form-label">\u041F\u0440\u0438 \u0441\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0438 ID \u0432 \u0438\u043D\u0432\u0435\u043D\u0442\u0430\u0440\u0435</label>
+            <select id="cs-batch-conflict-mode" class="cs-fleet-form-input">
+              <option value="update" selected>\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0439 \u0443\u0437\u0435\u043B</option>
+              <option value="unique">\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0443\u043D\u0438\u043A\u0430\u043B\u044C\u043D\u044B\u0439 ID (-2, -3)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Table Section -->
+      <div id="cs-batch-preview-section" style="display:none;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-weight:600;font-size:12px;color:var(--cs-srv-text-primary);">
+            \u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043D\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B: <span id="cs-batch-selected-stat" style="color:var(--cs-srv-accent);font-weight:700;">0 / 0</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-btn-select-all" style="padding:2px 8px;font-size:11px;">\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0432\u0441\u0435</button>
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-btn-deselect-all" style="padding:2px 8px;font-size:11px;">\u0421\u043D\u044F\u0442\u044C</button>
+            <button type="button" class="cs-fleet-btn-secondary" id="cs-batch-btn-ping-all" style="padding:2px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+              \u26A1 <span>\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u0432\u044F\u0437\u044C</span>
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--cs-srv-border);border-radius:8px;max-height:230px;overflow-y:auto;background:var(--cs-srv-bg-base);">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;text-align:left;">
+            <thead>
+              <tr style="background:var(--cs-srv-bg-subtle);border-bottom:1px solid var(--cs-srv-border);color:var(--cs-srv-text-muted);">
+                <th style="padding:6px 8px;width:28px;text-align:center;">\u2713</th>
+                <th style="padding:6px 8px;">\u0418\u043C\u044F \u0443\u0437\u043B\u0430</th>
+                <th style="padding:6px 8px;">ID \u0443\u0437\u043B\u0430</th>
+                <th style="padding:6px 8px;">\u0410\u0434\u0440\u0435\u0441 \u0445\u043E\u0441\u0442\u0430</th>
+                <th style="padding:6px 8px;">\u0420\u0430\u0431\u043E\u0447\u0438\u0435 \u043F\u0430\u043F\u043A\u0438 (Roots)</th>
+                <th style="padding:6px 8px;">\u041A\u043B\u044E\u0447 / TOTP</th>
+                <th style="padding:6px 8px;width:110px;">\u0421\u0442\u0430\u0442\u0443\u0441 \u0441\u0432\u044F\u0437\u0438</th>
+              </tr>
+            </thead>
+            <tbody id="cs-batch-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Execution Progress & Live Log -->
+      <div id="cs-batch-progress-section" style="display:none;flex-direction:column;gap:8px;border-top:1px solid var(--cs-srv-border);padding-top:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">
+          <span style="font-weight:600;color:var(--cs-srv-text-primary);" id="cs-batch-progress-label">\u0418\u043C\u043F\u043E\u0440\u0442 \u0443\u0437\u043B\u043E\u0432...</span>
+          <span style="font-family:monospace;color:var(--cs-srv-accent);font-weight:700;" id="cs-batch-progress-percent">0%</span>
+        </div>
+        <div style="width:100%;height:6px;background:var(--cs-srv-bg-subtle);border-radius:3px;overflow:hidden;border:1px solid var(--cs-srv-border);">
+          <div id="cs-batch-progress-bar" style="height:100%;width:0%;background:var(--cs-srv-accent);transition:width 0.2s ease;"></div>
+        </div>
+        <div id="cs-batch-log-console" style="max-height:120px;overflow-y:auto;background:#0d1117;color:#c9d1d9;font-family:monospace;font-size:11px;padding:8px 10px;border-radius:6px;line-height:1.4;display:flex;flex-direction:column;gap:2px;"></div>
+      </div>
+    </div>
+
+    <div class="cs-fleet-modal-footer">
+      <div style="font-size:11px;color:var(--cs-srv-text-muted);" id="cs-batch-footer-info">
+        \u0413\u043E\u0442\u043E\u0432\u043E \u043A \u0438\u043C\u043F\u043E\u0440\u0442\u0443: 0 \u0443\u0437\u043B\u043E\u0432
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="cs-fleet-btn-secondary cs-fleet-modal-cancel">\u041E\u0442\u043C\u0435\u043D\u0430</button>
+        <button type="button" class="cs-fleet-btn-primary" id="cs-batch-import-submit-btn" disabled style="display:inline-flex;align-items:center;gap:6px;">
+          ${ICONS.check} <span>\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0432 \u0444\u043B\u043E\u0442</span>
+        </button>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(overlay);
+    overlay.appendChild(modal);
+    const closeModal = () => {
+      if (isImporting) {
+        if (!confirm("\u0418\u043C\u043F\u043E\u0440\u0442 \u0443\u0437\u043B\u043E\u0432 \u043D\u0430\u0445\u043E\u0434\u0438\u0442\u0441\u044F \u0432 \u043F\u0440\u043E\u0446\u0435\u0441\u0441\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F. \u041F\u0440\u0435\u0440\u0432\u0430\u0442\u044C \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u0435?")) return;
+      }
+      overlay.remove();
+    };
+    modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
+    modal.querySelector(".cs-fleet-modal-cancel")?.addEventListener("click", closeModal);
+    const textarea = modal.querySelector("#cs-batch-links-textarea");
+    const summaryEl = modal.querySelector("#cs-batch-parse-summary");
+    const badgeEl = modal.querySelector("#cs-batch-count-badge");
+    const previewSection = modal.querySelector("#cs-batch-preview-section");
+    const previewTbody = modal.querySelector("#cs-batch-preview-tbody");
+    const selectedStatEl = modal.querySelector("#cs-batch-selected-stat");
+    const footerInfoEl = modal.querySelector("#cs-batch-footer-info");
+    const submitBtn = modal.querySelector("#cs-batch-import-submit-btn");
+    const groupInput = modal.querySelector("#cs-batch-group");
+    const tagsInput = modal.querySelector("#cs-batch-tags");
+    const conflictSelect = modal.querySelector("#cs-batch-conflict-mode");
+    const progressSection = modal.querySelector("#cs-batch-progress-section");
+    const progressBar = modal.querySelector("#cs-batch-progress-bar");
+    const progressPercent = modal.querySelector("#cs-batch-progress-percent");
+    const progressLabel = modal.querySelector("#cs-batch-progress-label");
+    const logConsole = modal.querySelector("#cs-batch-log-console");
+    function addLog(msg, color = "#c9d1d9") {
+      const time = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+      const line = document.createElement("div");
+      line.style.color = color;
+      line.textContent = `[${time}] ${msg}`;
+      logConsole.appendChild(line);
+      logConsole.scrollTop = logConsole.scrollHeight;
+    }
+    function updateParsedView() {
+      const rawText = textarea.value.trim();
+      if (!rawText) {
+        parsedItems = [];
+        previewSection.style.display = "none";
+        badgeEl.style.display = "none";
+        summaryEl.innerHTML = "<span>\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u043B\u0438 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0438 \u0434\u043B\u044F \u043F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430...</span>";
+        submitBtn.disabled = true;
+        footerInfoEl.textContent = "\u0413\u043E\u0442\u043E\u0432\u043E \u043A \u0438\u043C\u043F\u043E\u0440\u0442\u0443: 0 \u0443\u0437\u043B\u043E\u0432";
+        return;
+      }
+      const parseResult = parseMultipleAgentConnectionLinks(rawText);
+      const conflictMode = conflictSelect.value;
+      parsedItems = parseResult.items.map((item) => {
+        let finalId = item.nodeId;
+        if (conflictMode === "unique" && existingIds.has(finalId)) {
+          let counter = 2;
+          while (existingIds.has(`${item.nodeId}-${counter}`)) {
+            counter++;
+          }
+          finalId = `${item.nodeId}-${counter}`;
+        }
+        return {
+          ...item,
+          nodeId: finalId,
+          selected: true,
+          pingStatus: "\u041D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E",
+          pingColor: "var(--cs-srv-text-muted)"
+        };
+      });
+      badgeEl.style.display = "inline-block";
+      if (parsedItems.length > 0) {
+        badgeEl.style.color = "#10b981";
+        badgeEl.textContent = `\u2713 \u041D\u0430\u0439\u0434\u0435\u043D\u043E: ${parsedItems.length}`;
+        let warnText = "";
+        if (parseResult.warnings.length > 0) {
+          warnText = ` (\u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0445 \u0441\u0442\u0440\u043E\u043A: ${parseResult.warnings.length})`;
+        }
+        summaryEl.innerHTML = `<span style="color:#10b981;font-weight:600;">\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E ${parsedItems.length} \u0441\u0441\u044B\u043B\u043E\u043A${warnText}</span>`;
+        previewSection.style.display = "flex";
+      } else {
+        badgeEl.style.color = "#ef4444";
+        badgeEl.textContent = "0 \u0441\u0441\u044B\u043B\u043E\u043A";
+        summaryEl.innerHTML = `<span style="color:#ef4444;">\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043D\u0430\u0439\u0442\u0438 \u0432\u0430\u043B\u0438\u0434\u043D\u044B\u0445 \u0441\u0441\u044B\u043B\u043E\u043A cs-agent://</span>`;
+        previewSection.style.display = "none";
+      }
+      renderTable();
+      updateSubmitState();
+    }
+    function renderTable() {
+      previewTbody.innerHTML = "";
+      parsedItems.forEach((item, idx) => {
+        const isExisting = existingIds.has(item.nodeId);
+        const row = document.createElement("tr");
+        row.style.borderBottom = "1px solid var(--cs-srv-border)";
+        const rootsDisplay = item.roots && item.roots.length > 0 ? item.roots.join(", ") : "/";
+        const conflictBadge = isExisting ? `<span style="display:inline-block;padding:1px 4px;border-radius:4px;font-size:9px;background:#f59e0b22;color:#f59e0b;font-weight:600;margin-left:4px;">\u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435</span>` : `<span style="display:inline-block;padding:1px 4px;border-radius:4px;font-size:9px;background:#10b98122;color:#10b981;font-weight:600;margin-left:4px;">\u043D\u043E\u0432\u044B\u0439</span>`;
+        row.innerHTML = `
+        <td style="padding:6px 8px;text-align:center;">
+          <input type="checkbox" class="cs-batch-item-check" data-idx="${idx}" ${item.selected ? "checked" : ""} />
+        </td>
+        <td style="padding:6px 8px;font-weight:600;color:var(--cs-srv-text-primary);">
+          <input type="text" class="cs-fleet-form-input cs-batch-item-name" data-idx="${idx}" value="${escapeHtml(item.nodeName)}" style="padding:2px 4px;font-size:11px;width:110px;" />
+        </td>
+        <td style="padding:6px 8px;font-family:monospace;color:var(--cs-srv-accent);">
+          <span style="font-weight:600;">${escapeHtml(item.nodeId)}</span>
+          ${conflictBadge}
+        </td>
+        <td style="padding:6px 8px;font-family:monospace;">
+          ${escapeHtml(item.host)}:${item.port}
+          ${item.tls ? '<span style="color:#10b981;font-size:9px;font-weight:700;">TLS</span>' : ""}
+        </td>
+        <td style="padding:6px 8px;font-size:10px;color:var(--cs-srv-text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(rootsDisplay)}">
+          ${escapeHtml(rootsDisplay)}
+        </td>
+        <td style="padding:6px 8px;font-family:monospace;font-size:10px;">
+          <span title="${escapeHtml(item.keyId)}">${escapeHtml(item.keyId.slice(0, 10))}...</span>
+          <span style="color:var(--cs-srv-text-muted);">/ \u2022\u2022\u2022\u2022\u2022</span>
+        </td>
+        <td style="padding:6px 8px;font-weight:600;font-size:10px;color:${item.pingColor || "var(--cs-srv-text-muted)"};" id="cs-batch-ping-cell-${idx}">
+          ${escapeHtml(item.pingStatus || "\u041D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E")}
+        </td>
+      `;
+        const chk = row.querySelector(".cs-batch-item-check");
+        chk.addEventListener("change", () => {
+          parsedItems[idx].selected = chk.checked;
+          updateSubmitState();
+        });
+        const nameInput = row.querySelector(".cs-batch-item-name");
+        nameInput.addEventListener("input", () => {
+          parsedItems[idx].nodeName = nameInput.value.trim() || parsedItems[idx].nodeId;
+        });
+        previewTbody.appendChild(row);
+      });
+    }
+    function updateSubmitState() {
+      const selectedCount = parsedItems.filter((i) => i.selected).length;
+      selectedStatEl.textContent = `${selectedCount} / ${parsedItems.length}`;
+      footerInfoEl.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E \u043A \u0438\u043C\u043F\u043E\u0440\u0442\u0443: ${selectedCount} \u0443\u0437\u043B\u043E\u0432`;
+      submitBtn.disabled = selectedCount === 0 || isImporting;
+      submitBtn.innerHTML = `${ICONS.check} <span>\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C ${selectedCount} \u0443\u0437\u043B\u043E\u0432</span>`;
+    }
+    async function pingItem(idx) {
+      const item = parsedItems[idx];
+      const cell = modal.querySelector(`#cs-batch-ping-cell-${idx}`);
+      if (cell) {
+        cell.innerHTML = '<span style="color:var(--cs-srv-accent);">\u231B \u0422\u0435\u0441\u0442...</span>';
+      }
+      const start = performance.now();
+      try {
+        const otp = await generateTOTPWebCrypto(item.secret);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 3500);
+        const testUrl = `${item.tls ? "https" : "http"}://${item.host}:${item.port}/api/status`;
+        const res = await fetch(testUrl, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${item.keyId}:${otp}` },
+          signal: ctrl.signal
+        }).catch((err) => {
+          throw new Error(err.name === "AbortError" ? "\u0422\u0430\u0439\u043C\u0430\u0443\u0442 (3.5\u0441)" : err.message);
+        });
+        clearTimeout(timer);
+        const ms = Math.round(performance.now() - start);
+        if (res.ok) {
+          let level = "Read/Write";
+          try {
+            const d = await res.json();
+            if (d.accessLevel) level = d.accessLevel;
+          } catch (_) {
+          }
+          item.pingStatus = `\u2713 \u041E\u043D\u043B\u0430\u0439\u043D (${ms}ms) [${level}]`;
+          item.pingColor = "#10b981";
+        } else {
+          item.pingStatus = `\u26A0 HTTP ${res.status}`;
+          item.pingColor = "#f59e0b";
+        }
+      } catch (err) {
+        item.pingStatus = `\u2715 ${err.message || "\u0421\u0431\u043E\u0439"}`;
+        item.pingColor = "#ef4444";
+      }
+      if (cell) {
+        cell.style.color = item.pingColor;
+        cell.textContent = item.pingStatus;
+      }
+    }
+    modal.querySelector("#cs-batch-btn-ping-all")?.addEventListener("click", async () => {
+      if (isPinging) return;
+      isPinging = true;
+      const pingBtn = modal.querySelector("#cs-batch-btn-ping-all");
+      pingBtn.disabled = true;
+      pingBtn.innerHTML = "\u231B <span>\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430...</span>";
+      const selectedIndices = parsedItems.map((item, idx) => item.selected ? idx : -1).filter((i) => i >= 0);
+      await Promise.allSettled(selectedIndices.map((idx) => pingItem(idx)));
+      pingBtn.disabled = false;
+      pingBtn.innerHTML = "\u26A1 <span>\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u0432\u044F\u0437\u044C</span>";
+      isPinging = false;
+    });
+    modal.querySelector("#cs-batch-btn-select-all")?.addEventListener("click", () => {
+      parsedItems.forEach((i) => i.selected = true);
+      renderTable();
+      updateSubmitState();
+    });
+    modal.querySelector("#cs-batch-btn-deselect-all")?.addEventListener("click", () => {
+      parsedItems.forEach((i) => i.selected = false);
+      renderTable();
+      updateSubmitState();
+    });
+    textarea.addEventListener("input", () => {
+      updateParsedView();
+    });
+    conflictSelect.addEventListener("change", () => {
+      updateParsedView();
+    });
+    modal.querySelector("#cs-batch-links-paste-btn")?.addEventListener("click", async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          textarea.value = text;
+          updateParsedView();
+          showToast("\u0421\u0441\u044B\u043B\u043A\u0438 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u044B \u0438\u0437 \u0431\u0443\u0444\u0435\u0440\u0430 \u043E\u0431\u043C\u0435\u043D\u0430", "success");
+        }
+      } catch (err) {
+        showToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0431\u0443\u0444\u0435\u0440\u0443 \u043E\u0431\u043C\u0435\u043D\u0430. \u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E (Ctrl+V)", "warning");
+      }
+    });
+    modal.querySelector("#cs-batch-links-clear-btn")?.addEventListener("click", () => {
+      textarea.value = "";
+      updateParsedView();
+    });
+    modal.querySelector("#cs-batch-links-sample-btn")?.addEventListener("click", () => {
+      textarea.value = `# \u0414\u0435\u043C\u043E\u043D\u0441\u0442\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0443\u0437\u043B\u043E\u0432 \u0430\u0433\u0435\u043D\u0442\u043E\u0432
+cs-agent://cs_key_56643d5586e39415ec34721cfc1b31b6:JBSWY3DPEHPK3PXP@192.168.1.101:8085/?roots=/opt/projects,/var/www#prod-frontend-01
+cs-agent://cs_key_77743d5586e39415ec34721cfc1b31b7:KRSXG5CTMVRXEZLU@192.168.1.102:8085/?roots=/opt/projects,/var/log#prod-backend-01
+cs-agent://cs_key_88843d5586e39415ec34721cfc1b31b8:ORSXG5CTMVRXEZLV@192.168.1.103:9085/?roots=/data/db#prod-database-01`;
+      updateParsedView();
+    });
+    submitBtn.addEventListener("click", async () => {
+      const targets = parsedItems.filter((i) => i.selected);
+      if (targets.length === 0 || isImporting) return;
+      isImporting = true;
+      submitBtn.disabled = true;
+      progressSection.style.display = "flex";
+      logConsole.innerHTML = "";
+      const targetGroup = groupInput.value.trim() || "Agents";
+      const targetTags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
+      if (targetTags.length === 0) {
+        targetTags.push("agent", "remote");
+      }
+      addLog(`\u0417\u0430\u043F\u0443\u0441\u043A \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0433\u043E \u0438\u043C\u043F\u043E\u0440\u0442\u0430: \u0446\u0435\u043B\u0435\u0432\u044B\u0445 \u0443\u0437\u043B\u043E\u0432: ${targets.length}, \u0433\u0440\u0443\u043F\u043F\u0430: "${targetGroup}"`, "#38bdf8");
+      let successCount = 0;
+      let failCount = 0;
+      for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+        const percent = Math.round((i + 1) / targets.length * 100);
+        progressBar.style.width = `${percent}%`;
+        progressPercent.textContent = `${percent}%`;
+        progressLabel.textContent = `\u0418\u043C\u043F\u043E\u0440\u0442 \u0443\u0437\u043B\u0430 ${i + 1} \u0438\u0437 ${targets.length}: ${item.nodeName}`;
+        try {
+          const vaultSecretId = `agent:${item.nodeId}`;
+          const secretVal = JSON.stringify({
+            keyId: item.keyId,
+            secret: item.secret
+          });
+          await saveVaultSecret({
+            id: vaultSecretId,
+            title: `Agent Credentials (${item.nodeName})`,
+            type: "agent_credentials",
+            scope: "shared",
+            pluginId: "servers",
+            value: secretVal
+          });
+          addLog(`[${item.nodeId}] \u0421\u0435\u043A\u0440\u0435\u0442 Core Vault (${vaultSecretId}) \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D`, "#10b981");
+          const serverNode = {
+            id: item.nodeId,
+            name: item.nodeName || item.nodeId,
+            group: targetGroup,
+            tags: targetTags,
+            icon: "server",
+            connection: {
+              agent: {
+                enabled: true,
+                url: `${item.tls ? "https" : "http"}://${item.host}:${item.port}`,
+                port: item.port,
+                roots: item.roots && item.roots.length > 0 ? item.roots : ["/"],
+                vaultSecret: vaultSecretId,
+                tlsVerify: false
+              }
+            }
+          };
+          await saveServer(serverNode);
+          addLog(`[${item.nodeId}] \u0423\u0437\u0435\u043B \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0437\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u043D \u0432 servers.yaml (${item.host}:${item.port})`, "#10b981");
+          successCount++;
+        } catch (err) {
+          addLog(`[${item.nodeId}] \u041E\u0448\u0438\u0431\u043A\u0430 \u0438\u043C\u043F\u043E\u0440\u0442\u0430: ${err.message || err}`, "#ef4444");
+          failCount++;
+        }
+      }
+      addLog(`\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0438\u043C\u043F\u043E\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D: \u0443\u0441\u043F\u0435\u0448\u043D\u043E: ${successCount}, \u043E\u0448\u0438\u0431\u043E\u043A: ${failCount}`, successCount > 0 ? "#10b981" : "#ef4444");
+      try {
+        await fleet.loadServers();
+      } catch (_) {
+      }
+      showToast(`\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u043E ${successCount} \u0430\u0433\u0435\u043D\u0442\u043E\u0432 \u0432 \u0444\u043B\u043E\u0442!`, successCount > 0 ? "success" : "error");
+      isImporting = false;
+      submitBtn.innerHTML = `${ICONS.check} <span>\u0413\u043E\u0442\u043E\u0432\u043E</span>`;
+      setTimeout(() => {
+        if (failCount === 0) {
+          closeModal();
+        }
+      }, 1500);
+    });
+  }
+
   // src/yaml.ts
   function sanitizeServerId(raw) {
     if (!raw) return "";
@@ -776,9 +1281,14 @@ var ConfigStudioServersPlugin = (() => {
             <span>\u26A1</span>
             <span>1-Click \u0418\u043C\u043F\u043E\u0440\u0442 \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0435 \u0430\u0433\u0435\u043D\u0442\u0430 (cs-agent://)</span>
           </div>
-          <button type="button" id="cs-manual-copy-link-btn" title="\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0432\u0441\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u0430\u043A \u0441\u0441\u044B\u043B\u043A\u0443 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
-            \u{1F4CB} \u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443 cs-agent://
-          </button>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <button type="button" id="cs-manual-copy-link-btn" title="\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0432\u0441\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u0430\u043A \u0441\u0441\u044B\u043B\u043A\u0443 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F cs-agent://" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;">
+              \u{1F4CB} \u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443 cs-agent://
+            </button>
+            <button type="button" id="cs-manual-switch-to-batch-btn" title="\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043F\u0430\u0447\u043A\u0443 \u0441\u0441\u044B\u043B\u043E\u043A cs-agent:// \u0441\u0440\u0430\u0437\u0443" style="background:none;border:none;color:var(--cs-srv-accent);cursor:pointer;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;padding:0;font-weight:600;">
+              ${ICONS.link} \u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0438\u043C\u043F\u043E\u0440\u0442 \u0441\u0441\u044B\u043B\u043E\u043A...
+            </button>
+          </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" class="cs-fleet-form-input" id="cs-manual-import-link" placeholder="\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0443: cs-agent://key:secret@host:port/?roots=/opt,/var#node-name" style="font-family:monospace;font-size:11.5px;" />
@@ -920,6 +1430,10 @@ var ConfigStudioServersPlugin = (() => {
     }
     modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
     modal.querySelector("#cs-manual-cancel-btn")?.addEventListener("click", closeModal);
+    modal.querySelector("#cs-manual-switch-to-batch-btn")?.addEventListener("click", () => {
+      closeModal();
+      openBatchImportLinksModal();
+    });
     const importInput = modal.querySelector("#cs-manual-import-link");
     const importBtn = modal.querySelector("#cs-manual-import-btn");
     const importStatusEl = modal.querySelector("#cs-manual-import-status");
@@ -1350,6 +1864,9 @@ var ConfigStudioServersPlugin = (() => {
     }
     async openManualAgentModal(server) {
       return openManualAgentModal(server);
+    }
+    openBatchImportLinksModal() {
+      openBatchImportLinksModal();
     }
     clearTotpTimer() {
       if (this.totpInterval) {
@@ -2288,8 +2805,14 @@ var ConfigStudioServersPlugin = (() => {
 
     <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;">
       <!-- Banner -->
-      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--cs-srv-text-primary);">
-        \u041F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u044C\u043D\u043E\u0435 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044B\u0432\u0430\u043D\u0438\u0435 <b>config-studio-agent</b> \u043D\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B \u0444\u043B\u043E\u0442\u0430: \u0430\u0432\u0442\u043E\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u041E\u0421 \u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u044B, \u043F\u043E\u0442\u043E\u043A\u043E\u0432\u0430\u044F \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0430 \u0431\u0438\u043D\u0430\u0440\u043D\u0438\u043A\u0430 \u043F\u043E SFTP, \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u0441\u043B\u0443\u0436\u0431\u044B (systemd/OpenRC) \u0438 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0443\u043D\u0438\u043A\u0430\u043B\u044C\u043D\u044B\u0445 TOTP-\u0441\u0435\u043A\u0440\u0435\u0442\u043E\u0432 \u0432 Core Vault.
+      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--cs-srv-text-primary);line-height:1.5;">
+        <div>
+          \u041F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u044C\u043D\u043E\u0435 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044B\u0432\u0430\u043D\u0438\u0435 <b>config-studio-agent</b> \u043D\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B \u0444\u043B\u043E\u0442\u0430: \u0430\u0432\u0442\u043E\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u041E\u0421 \u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u044B, \u043F\u043E\u0442\u043E\u043A\u043E\u0432\u0430\u044F \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0430 \u0431\u0438\u043D\u0430\u0440\u043D\u0438\u043A\u0430 \u043F\u043E SFTP, \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u0441\u043B\u0443\u0436\u0431\u044B (systemd/OpenRC) \u0438 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0443\u043D\u0438\u043A\u0430\u043B\u044C\u043D\u044B\u0445 TOTP-\u0441\u0435\u043A\u0440\u0435\u0442\u043E\u0432 \u0432 Core Vault.
+        </div>
+        <div style="margin-top:6px;font-size:11.5px;color:var(--cs-srv-text-muted);">
+          \u0423\u0436\u0435 \u0440\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u043B\u0438 \u0430\u0433\u0435\u043D\u0442\u043E\u0432 \u0447\u0435\u0440\u0435\u0437 Ansible, Bash \u0438\u043B\u0438 \u043A\u043E\u043D\u0441\u043E\u043B\u044C?
+          <a href="#" id="cs-batch-switch-to-links" style="color:var(--cs-srv-accent);text-decoration:underline;cursor:pointer;font-weight:600;">\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0433\u043E\u0442\u043E\u0432\u044B\u0435 \u0441\u0441\u044B\u043B\u043A\u0438 cs-agent:// \u043F\u0430\u043A\u0435\u0442\u043E\u043C</a>
+        </div>
       </div>
 
       <!-- Deployment Settings Form -->
@@ -2487,6 +3010,11 @@ var ConfigStudioServersPlugin = (() => {
     }
     modal.querySelector(".cs-fleet-modal-close")?.addEventListener("click", closeModal);
     closeBtn?.addEventListener("click", closeModal);
+    modal.querySelector("#cs-batch-switch-to-links")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeModal();
+      openBatchImportLinksModal();
+    });
     const hostStatusMap = /* @__PURE__ */ new Map();
     function renderExecutionRow(st) {
       let card = executionListEl.querySelector(`[data-exec-id="${st.serverId}"]`);
@@ -2963,15 +3491,23 @@ var ConfigStudioServersPlugin = (() => {
           const footer = document.createElement("div");
           footer.className = "cs-fleet-dropdown-footer";
           footer.innerHTML = `
-          <div style="display:flex;align-items:center;gap:8px;">
-            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-batch-btn" style="background:none;border:none;cursor:pointer;color:var(--cs-srv-accent);display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
-              ${ICONS.agent} <span>\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-import-btn" style="background:none;border:none;cursor:pointer;color:var(--cs-srv-accent);display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
+              ${ICONS.link} <span>\u0418\u043C\u043F\u043E\u0440\u0442 \u0441\u0441\u044B\u043B\u043E\u043A</span>
+            </button>
+            <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-batch-btn" style="background:none;border:none;cursor:pointer;color:inherit;opacity:0.85;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0;">
+              ${ICONS.agent} <span>\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442.</span>
             </button>
           </div>
           <button type="button" class="cs-fleet-yaml-link" id="cs-fleet-dropdown-raw-yaml-btn" style="background:none;border:none;cursor:pointer;color:inherit;font-size:inherit;padding:0;display:inline-flex;align-items:center;gap:4px;">
             <span>servers.yaml</span> ${ICONS.arrowRight}
           </button>
         `;
+          footer.querySelector("#cs-fleet-dropdown-import-btn")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeDropdown();
+            openBatchImportLinksModal();
+          });
           footer.querySelector("#cs-fleet-dropdown-batch-btn")?.addEventListener("click", (e) => {
             e.stopPropagation();
             closeDropdown();
@@ -3043,14 +3579,20 @@ var ConfigStudioServersPlugin = (() => {
         <div class="cs-fleet-sidebar-header">
           <span style="font-weight:700;font-size:12px;">\u0423\u0437\u043B\u044B \u0438\u043D\u0432\u0435\u043D\u0442\u0430\u0440\u044F</span>
           <div style="display:flex;gap:6px;">
-            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-batch-btn" title="\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u0430\u0433\u0435\u043D\u0442\u0430" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-              ${ICONS.agent} <span>\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430</span>
+            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-import-links-btn" title="\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0438\u043C\u043F\u043E\u0440\u0442 \u0441\u0441\u044B\u043B\u043E\u043A cs-agent://" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+              ${ICONS.link} <span>\u0418\u043C\u043F\u043E\u0440\u0442</span>
+            </button>
+            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-batch-btn" title="\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u0430\u0433\u0435\u043D\u0442\u0430 \u043F\u043E SSH" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+              ${ICONS.agent} <span>\u041C\u0430\u0441\u0441\u043E\u0432\u0430\u044F \u0443\u0441\u0442.</span>
             </button>
             <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-add-btn">${ICONS.plus} <span>\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C</span></button>
           </div>
         </div>
         <div class="cs-fleet-sidebar-body" id="cs-fleet-sidebar-list"></div>
       `;
+        panel.querySelector("#cs-fleet-sidebar-import-links-btn")?.addEventListener("click", () => {
+          openBatchImportLinksModal();
+        });
         panel.querySelector("#cs-fleet-sidebar-batch-btn")?.addEventListener("click", () => {
           openBatchInstallModal();
         });
@@ -3595,6 +4137,9 @@ var ConfigStudioServersPlugin = (() => {
           },
           openManualAgent: (server) => {
             fleet.openManualAgentModal(server);
+          },
+          openBatchImportLinks: () => {
+            fleet.openBatchImportLinksModal();
           }
         },
         PLUGIN_ID

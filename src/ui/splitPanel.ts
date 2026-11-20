@@ -3,6 +3,7 @@ import { ICONS, PLUGIN_ID } from '../constants';
 import { createServerCard } from './serverCard';
 import { openEditModal } from './editServerModal';
 import { openBatchInstallModal } from './batchInstallModal';
+import { openBatchImportLinksModal } from './batchImportLinksModal';
 
 /**
  * Sidebar Split Panel Component
@@ -30,14 +31,21 @@ export function registerSidebarPanel(): void {
         <div class="cs-fleet-sidebar-header">
           <span style="font-weight:700;font-size:12px;">Узлы инвентаря</span>
           <div style="display:flex;gap:6px;">
-            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-batch-btn" title="Массовая установка агента" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-              ${ICONS.agent} <span>Массовая установка</span>
+            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-import-links-btn" title="Пакетный импорт ссылок cs-agent://" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+              ${ICONS.link} <span>Импорт</span>
+            </button>
+            <button class="cs-fleet-btn-secondary" id="cs-fleet-sidebar-batch-btn" title="Массовая установка агента по SSH" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+              ${ICONS.agent} <span>Массовая уст.</span>
             </button>
             <button class="cs-fleet-add-btn" id="cs-fleet-sidebar-add-btn">${ICONS.plus} <span>Добавить</span></button>
           </div>
         </div>
         <div class="cs-fleet-sidebar-body" id="cs-fleet-sidebar-list"></div>
       `;
+
+      panel.querySelector('#cs-fleet-sidebar-import-links-btn')?.addEventListener('click', () => {
+        openBatchImportLinksModal();
+      });
 
       panel.querySelector('#cs-fleet-sidebar-batch-btn')?.addEventListener('click', () => {
         openBatchInstallModal();

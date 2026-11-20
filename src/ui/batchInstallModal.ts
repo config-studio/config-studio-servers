@@ -3,6 +3,7 @@ import { store } from '../state';
 import { fleet } from '../fleet';
 import { ICONS } from '../constants';
 import { escapeHtml, showToast } from './domUtils';
+import { openBatchImportLinksModal } from './batchImportLinksModal';
 
 /**
  * Fleet Batch Provisioning Modal
@@ -52,8 +53,14 @@ export function openBatchInstallModal(initialSelectedIds: string[] = []): void {
 
     <div class="cs-fleet-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;">
       <!-- Banner -->
-      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--cs-srv-text-primary);">
-        Параллельное автоматическое развертывание <b>config-studio-agent</b> на выбранные серверы флота: автоопределение ОС и архитектуры, потоковая передача бинарника по SFTP, регистрация службы (systemd/OpenRC) и генерация уникальных TOTP-секретов в Core Vault.
+      <div style="background:var(--cs-srv-bg-subtle);border:1px solid var(--cs-srv-border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--cs-srv-text-primary);line-height:1.5;">
+        <div>
+          Параллельное автоматическое развертывание <b>config-studio-agent</b> на выбранные серверы флота: автоопределение ОС и архитектуры, потоковая передача бинарника по SFTP, регистрация службы (systemd/OpenRC) и генерация уникальных TOTP-секретов в Core Vault.
+        </div>
+        <div style="margin-top:6px;font-size:11.5px;color:var(--cs-srv-text-muted);">
+          Уже развернули агентов через Ansible, Bash или консоль?
+          <a href="#" id="cs-batch-switch-to-links" style="color:var(--cs-srv-accent);text-decoration:underline;cursor:pointer;font-weight:600;">Импортировать готовые ссылки cs-agent:// пакетом</a>
+        </div>
       </div>
 
       <!-- Deployment Settings Form -->
@@ -272,6 +279,12 @@ export function openBatchInstallModal(initialSelectedIds: string[] = []): void {
 
   modal.querySelector('.cs-fleet-modal-close')?.addEventListener('click', closeModal);
   closeBtn?.addEventListener('click', closeModal);
+
+  modal.querySelector('#cs-batch-switch-to-links')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    openBatchImportLinksModal();
+  });
 
   // Host status tracking for live execution
   const hostStatusMap = new Map<string, BatchInstallEvent>();

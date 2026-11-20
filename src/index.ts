@@ -78,6 +78,9 @@ export function initServersPlugin(): void {
         },
         openManualAgent: (server?: any) => {
           fleet.openManualAgentModal(server);
+        },
+        openBatchImportLinks: () => {
+          fleet.openBatchImportLinksModal();
         }
       },
       PLUGIN_ID
